@@ -3,7 +3,6 @@ FROM node:20-bullseye AS builder
 
 RUN apt-get update && apt-get install -y \
     make \
-    git \
     build-essential \
     python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -20,11 +19,8 @@ RUN npm install --ignore-scripts
 # Copy the rest of the source
 COPY . .
 
-# Initialize git submodules if any
-RUN git init && git submodule update --init --recursive 2>/dev/null || true
-
-# Run the build (webpack + make web)
-RUN npm run build
+# Follow README setup: symlink pyret-lang npm package as ./pyret, then build
+RUN ln -s node_modules/pyret-lang pyret && npm run build
 
 # Runtime stage
 FROM node:20-bullseye-slim
