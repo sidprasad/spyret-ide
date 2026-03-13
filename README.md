@@ -174,10 +174,16 @@ docker build -t spyret-ide:local .
 ### Run the server
 
 ```
-docker run --rm -it -p 4999:4999 spyret-ide:local
+docker run --rm -it --name spyret-ide -p 4999:4999 spyret-ide:local
 ```
 
 The editor will be served from `http://localhost:4999/editor`.
+
+To stop the container:
+
+```
+docker stop spyret-ide
+```
 
 You can override any environment variable at runtime:
 
