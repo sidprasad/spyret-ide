@@ -41,8 +41,10 @@ EXPOSE 4999
 
 # Defaults mirror .env.example — override any of these at runtime via
 # docker run -e KEY=value, --env-file, or Docker Compose environment:
-ENV PORT=4999 \
-    NODE_ENV=production \
+ENV GIT_REV=docker \
+    GIT_BRANCH=docker \
+    PORT=4999 \
+    NODE_ENV=development \
     BASE_URL=http://localhost:4999 \
     ASSET_BASE_URL=http://localhost:5001 \
     LOG_URL=http://localhost:5002 \

@@ -161,6 +161,48 @@ add a directory here and figure out a good predicate that can be applied
 across the files (`runAndCheckAllTestsPassed` is probably a good candidate for
 many use cases).
 
+## Running with Docker
+
+A Dockerfile is provided for building and running the server locally without needing to install Node.js or the Heroku toolbelt.
+
+### Build the image
+
+```
+docker build -t spyret-ide:local .
+```
+
+### Run the server
+
+```
+docker run --rm -it -p 4999:4999 spyret-ide:local
+```
+
+The editor will be served from `http://localhost:4999/editor`.
+
+You can override any environment variable at runtime:
+
+```
+docker run --rm -it -p 4999:4999 \
+  -e GOOGLE_CLIENT_ID=your-client-id \
+  -e GOOGLE_CLIENT_SECRET=your-client-secret \
+  -e GOOGLE_API_KEY=your-api-key \
+  -e SESSION_SECRET=a-strong-secret \
+  spyret-ide:local
+```
+
+### Notes
+
+- The image defaults to `NODE_ENV=development`. This disables the HTTPS-only redirect that runs in production (behind a load balancer that sets `x-forwarded-proto`). If you deploy behind such a proxy, override with `-e NODE_ENV=production`.
+- `GIT_REV` and `GIT_BRANCH` are set to `docker` at build time since no `.git` directory is present in the image. Pass them as build args to embed real values:
+
+  ```
+  docker build --build-arg GIT_REV=$(git rev-parse --short HEAD) \
+               --build-arg GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
+               -t spyret-ide:local .
+  ```
+
+  You can also pass them at runtime with `-e GIT_REV=... -e GIT_BRANCH=...`.
+
 ## Setting up your own remote version of code.pyret.org with Heroku:
 
 If you are doing development on code.pyret.org, it can be useful to run it on a remote server (for sharing purposes, etc.). Heroku allows us to do this easily.
