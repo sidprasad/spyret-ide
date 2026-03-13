@@ -9,6 +9,32 @@
     theModule: function (runtime, namespace, uri) {
 
 
+        function getSpytialCore() {
+            const core = window.spytialcore || window.CndCore || window.CnDCore;
+            if (!core) {
+                throw new Error("spytial-core runtime is unavailable. Ensure browser bundles are loaded.");
+            }
+            return core;
+        }
+
+        function parseLayoutSpecSafe(core, cndSpec) {
+            const normalizedSpec = typeof cndSpec === "string" ? cndSpec.trim() : "";
+            if (!normalizedSpec) {
+                return core.parseLayoutSpec("constraints: []\ndirectives: []");
+            }
+            return core.parseLayoutSpec(normalizedSpec);
+        }
+
+        function renderPyretLayoutPreview(core, graphElement, dataInstance, cndSpec) {
+            const evaluationContext = { sourceData: dataInstance };
+            const evaluator = new core.Evaluators.SGraphQueryEvaluator();
+            evaluator.initialize(evaluationContext);
+            const layoutSpec = parseLayoutSpecSafe(core, cndSpec);
+            const layoutInstance = new core.LayoutInstance(layoutSpec, evaluator, 0, true);
+            const layoutResult = layoutInstance.generateLayout(dataInstance, {});
+            return graphElement.renderLayout(layoutResult.layout);
+        }
+
         ///// Layout Generation /////
         function genlayout(v, cndSpec) {
 
@@ -24,16 +50,18 @@
             container.appendChild(errorDiv);
 
             try {
-                // CnDCore logic
-                const dataInstance = new window.CndCore.PyretDataInstance(v, false, window.__internalRepl); // Pass the external repl.
+                const core = getSpytialCore();
+
+                // Spytial core layout logic
+                const dataInstance = new core.PyretDataInstance(v, {}, window.__internalRepl);
                 const evaluationContext = { sourceData: dataInstance };
-                const evaluator = new CndCore.Evaluators.SGraphQueryEvaluator();
+                const evaluator = new core.Evaluators.SGraphQueryEvaluator();
                 evaluator.initialize(evaluationContext);
                 const r = dataInstance.reify();
-                const layoutSpec = CndCore.parseLayoutSpec(cndSpec);
+                const layoutSpec = parseLayoutSpecSafe(core, cndSpec);
                 const ENABLE_ALIGNMENT_EDGES = true;
                 const instanceNumber = 0;
-                const layoutInstance = new CndCore.LayoutInstance(
+                const layoutInstance = new core.LayoutInstance(
                     layoutSpec,
                     evaluator,
                     instanceNumber,
@@ -163,6 +191,16 @@
                 // Create the overlay container
                 const overlay = document.createElement("div");
                 applyOverlayStyles(overlay);
+                const cleanupHandlers = [];
+                const runCleanup = () => {
+                    cleanupHandlers.forEach((cleanupFn) => {
+                        try {
+                            cleanupFn();
+                        } catch (cleanupErr) {
+                            console.warn("Cleanup error:", cleanupErr);
+                        }
+                    });
+                };
 
                 // Create the input container
                 const container = document.createElement("div");
@@ -204,6 +242,7 @@
 
                 // Cancel button functionality
                 cancelButton.onclick = () => {
+                    runCleanup();
                     document.body.removeChild(overlay);
                     reject("cancelled");
                 };
@@ -211,10 +250,20 @@
                 // Done button functionality
                 doneButton.onclick = () => {
                     try {
-                        if (!dataInstance || typeof dataInstance.reify !== "function") {
+                        const core = getSpytialCore();
+                        const getCurrentPyretInstance =
+                            core.getCurrentPyretInstanceFromReact ||
+                            window.getCurrentPyretInstanceFromReact ||
+                            window.getCurrentPyretInstance;
+                        const latestInstance = typeof getCurrentPyretInstance === "function"
+                            ? getCurrentPyretInstance()
+                            : dataInstance;
+
+                        if (!latestInstance || typeof latestInstance.reify !== "function") {
                             throw new Error("dataInstance.reify() is not available");
                         }
-                        const result = dataInstance.reify();
+                        const result = latestInstance.reify();
+                        runCleanup();
                         document.body.removeChild(overlay);
                         resolve(result);
                     } catch (err) {
@@ -224,24 +273,102 @@
 
                 // Initialize the input logic
                 try {
+                    const core = getSpytialCore();
                     const pyretREPLInternal = window.__internalRepl;
+                    const mountPyretRepl = core.mountPyretRepl || window.mountPyretRepl;
 
-                    const success = CndCore.mountCombinedInput({
-                        containerId: combinedInputDiv.id,
-                        cndSpec: cndSpec,
-                        dataInstance: dataInstance,
-                        pyretEvaluator: pyretREPLInternal,
-                        height: '100%', // Ensure the combined input spans the full height of the container
-                        showLayoutInterface: false,
-                        autoApplyLayout: true,
-                        onInstanceChange: () => { },
-                        onSpecChange: () => { console.log("Spec changed"); },
-                        onLayoutApplied: () => { console.log("Layout applied successfully"); },
+                    if (typeof mountPyretRepl !== "function") {
+                        throw new Error("spytial-core mountPyretRepl API is unavailable");
+                    }
+
+                    const workspace = document.createElement("div");
+                    workspace.style.display = "flex";
+                    workspace.style.flexWrap = "wrap";
+                    workspace.style.gap = "12px";
+                    workspace.style.alignItems = "stretch";
+                    workspace.style.minHeight = "520px";
+                    combinedInputDiv.appendChild(workspace);
+
+                    const replContainer = document.createElement("div");
+                    replContainer.id = "pyret-repl-container-" + Math.random().toString(36).slice(2);
+                    replContainer.style.flex = "1 1 340px";
+                    replContainer.style.minWidth = "340px";
+                    workspace.appendChild(replContainer);
+
+                    const previewContainer = document.createElement("div");
+                    previewContainer.style.flex = "1 1 340px";
+                    previewContainer.style.minWidth = "340px";
+                    previewContainer.style.border = "1px solid #ddd";
+                    previewContainer.style.borderRadius = "6px";
+                    previewContainer.style.padding = "8px";
+                    previewContainer.style.backgroundColor = "#fff";
+                    previewContainer.style.display = "flex";
+                    previewContainer.style.flexDirection = "column";
+                    workspace.appendChild(previewContainer);
+
+                    const previewLabel = document.createElement("div");
+                    previewLabel.textContent = "Preview";
+                    previewLabel.style.fontWeight = "bold";
+                    previewLabel.style.fontSize = "12px";
+                    previewLabel.style.marginBottom = "8px";
+                    previewContainer.appendChild(previewLabel);
+
+                    const graphElement = document.createElement("webcola-cnd-graph");
+                    graphElement.setAttribute("width", "460");
+                    graphElement.setAttribute("height", "460");
+                    graphElement.style.minHeight = "460px";
+                    graphElement.style.display = "block";
+                    graphElement.style.margin = "0 auto";
+                    previewContainer.appendChild(graphElement);
+
+                    const previewError = document.createElement("div");
+                    previewError.style.marginTop = "8px";
+                    previewError.style.fontSize = "12px";
+                    previewError.style.color = "#a94442";
+                    previewContainer.appendChild(previewError);
+
+                    const refreshPreview = (instanceOverride) => {
+                        const getCurrentPyretInstance =
+                            core.getCurrentPyretInstanceFromReact ||
+                            window.getCurrentPyretInstanceFromReact ||
+                            window.getCurrentPyretInstance;
+                        const currentInstance = instanceOverride ||
+                            (typeof getCurrentPyretInstance === "function" ? getCurrentPyretInstance() : null) ||
+                            dataInstance;
+
+                        if (!currentInstance) {
+                            return;
+                        }
+
+                        previewError.textContent = "";
+                        renderPyretLayoutPreview(core, graphElement, currentInstance, cndSpec).catch((renderErr) => {
+                            previewError.textContent = `Preview update failed: ${renderErr.message || renderErr}`;
+                            console.error("Error rendering preview graph:", renderErr);
+                        });
+                    };
+
+                    const mounted = mountPyretRepl(replContainer.id, {
+                        initialInstance: dataInstance,
+                        externalEvaluator: pyretREPLInternal
                     });
 
-                    if (!success) {
-                        throw new Error("Failed to mount combined input");
+                    if (!mounted) {
+                        throw new Error("Failed to mount Pyret REPL");
                     }
+
+                    const onInstanceChanged = (event) => {
+                        const eventInstance = event?.detail?.instance;
+                        if (eventInstance) {
+                            refreshPreview(eventInstance);
+                        }
+                    };
+
+                    window.addEventListener("pyret-instance-changed", onInstanceChanged);
+                    cleanupHandlers.push(() => {
+                        window.removeEventListener("pyret-instance-changed", onInstanceChanged);
+                    });
+
+                    refreshPreview(dataInstance);
                 } catch (err) {
                     container.textContent = `Error: ${err.message || err}`;
                     reject(err);
@@ -304,6 +431,7 @@
                 const cmEl = document.activeElement.closest(".CodeMirror") || document.querySelector(".CodeMirror");
                 const cm = cmEl?.CodeMirror;
                 if (!cm) throw new Error("No active CodeMirror instance");
+                const core = getSpytialCore();
 
                 const cursorCoords = cm.cursorCoords(true, "page");
 
@@ -322,17 +450,21 @@
                         return str; // Return the string unchanged if no outer quotes
                     }
 
-                    let cndSpecExpr = `(${selectedText})._cndspec()`;
-                    let intermediatePyretDataInst = await window.CndCore.PyretDataInstance.fromExpression(cndSpecExpr, false, window.__internalRepl);
+                    const cndSpecExpr = `(${selectedText})._cndspec()`;
+                    const intermediatePyretDataInst = await core.PyretDataInstance.fromExpression(
+                        cndSpecExpr,
+                        {},
+                        window.__internalRepl
+                    );
                     // Get the CnD spec from the selected text. This is super hacky, may be better to actually begin with the 
                     // EVALUATION of the selected text.
                     cndSpec = removeOuterQuotes(intermediatePyretDataInst.reify());
 
 
-                    dataInstance = await window.CndCore.PyretDataInstance.fromExpression(selectedText, false, window.__internalRepl);
+                    dataInstance = await core.PyretDataInstance.fromExpression(selectedText, {}, window.__internalRepl);
                 } else {
                     // Else, we create a new data instance with no value.
-                    dataInstance = new window.CndCore.PyretDataInstance(null, false, window.__internalRepl);
+                    dataInstance = new core.PyretDataInstance(null, {}, window.__internalRepl);
                 }
 
                 const result = await geninput(dataInstance, cndSpec, cursorCoords);
