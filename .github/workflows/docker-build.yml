@@ -14,8 +14,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Check DockerHub Username
-        run: echo "Username is set: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+      - name: Validate Docker Hub secrets
+        run: |
+          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
+            echo "DOCKERHUB_USERNAME is empty or unavailable in this workflow context."
+            exit 1
+          fi
+          if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "DOCKERHUB_TOKEN is empty or unavailable in this workflow context."
+            exit 1
+          fi
+          echo "Docker Hub secrets are available."
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -25,8 +34,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-
 
       - name: Build and push
         uses: docker/build-push-action@v6
