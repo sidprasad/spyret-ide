@@ -57,7 +57,17 @@
                 const evaluationContext = { sourceData: dataInstance };
                 const evaluator = new core.Evaluators.SGraphQueryEvaluator();
                 evaluator.initialize(evaluationContext);
-                const r = dataInstance.reify();
+                // String view: render the live value with Pyret's own torepr — the
+                // REPL-equivalent form, computed natively here from the runtime. This
+                // is Pyret's "replit": no spytial-core reify, and it uses `_torepr`
+                // (not `_output`) so it won't recurse back into genlayout.
+                let r;
+                try {
+                    r = runtime.toReprJS(v, runtime.ReprMethods._torepr);
+                } catch (reprErr) {
+                    console.warn("toRepr failed for value; string view omitted:", reprErr);
+                    r = "";
+                }
                 const layoutSpec = parseLayoutSpecSafe(core, cndSpec);
                 const ENABLE_ALIGNMENT_EDGES = true;
                 const instanceNumber = 0;
