@@ -101,16 +101,42 @@ function reindent(body, indent) {
   }).join("\n");
 }
 
+// Does only whitespace separate this position from the start / end of its line?
+function isAtLineStart(doc, pos) {
+  return /^[ \t]*$/.test(doc.getRange({ line: pos.line, ch: 0 }, pos));
+}
+
+function isAtLineEnd(doc, pos) {
+  var eol = { line: pos.line, ch: doc.getLine(pos.line).length };
+  return /^[ \t]*$/.test(doc.getRange(pos, eol));
+}
+
 // Rebuild what sits between the two fences: the author's gap after the opening
 // fence, the re-indented YAML, then the gap before the closing fence. Keeping
 // both gaps leaves the fences exactly where they were.
-function reframe(raw, indented) {
+//
+// A range with no gap of its own -- a selection of just the YAML, newlines
+// left outside it -- needs one synthesized when the edit grows to several
+// lines. Only where the document doesn't already supply the break, though:
+// atStart/atEnd say the range is already sitting on its own line, and adding
+// a newline there would open a blank line against the fence.
+function reframe(raw, indented, atStart, atEnd) {
   var multiline = indented.indexOf("\n") !== -1;
   var leadMatch = /^[ \t]*\r?\n/.exec(raw);
   var trailMatch = /\r?\n[ \t]*$/.exec(raw);
-  var lead = leadMatch ? leadMatch[0] : (multiline ? "\n" : "");
-  var trail = trailMatch ? trailMatch[0] : (multiline ? "\n" : "");
+  var lead = leadMatch ? leadMatch[0] : ((multiline && !atStart) ? "\n" : "");
+  var trail = trailMatch ? trailMatch[0] : ((multiline && !atEnd) ? "\n" : "");
   return lead + indented + trail;
+}
+
+// Turn the editor's YAML into the text that replaces the original range.
+//
+// The trim matters: the spec editor frames its own output with surrounding
+// newlines, and framing belongs to reframe. Left in, they land as blank lines
+// against the fences. splitIndent trims the same way on the way in, so an
+// unedited round-trip comes back byte for byte.
+function buildReplacement(raw, edited, indent, atStart, atEnd) {
+  return reframe(raw, reindent(edited.trim(), indent), atStart, atEnd);
 }
 
 /***** The dialog *****/
@@ -253,12 +279,18 @@ function openForEditor(cm) {
     var live = marker.find();
     marker.clear();
     if (edited === null) { return; }
-    if (edited === split.body) { return; }
+    if (edited.trim() === split.body) { return; }
     if (!live) {
       flash("That spec moved while you were editing it, so nothing was changed.");
       return;
     }
-    var replacement = reframe(raw, reindent(edited, split.indent));
+    var replacement = buildReplacement(
+      raw,
+      edited,
+      split.indent,
+      isAtLineStart(doc, live.from),
+      isAtLineEnd(doc, live.to)
+    );
     doc.replaceRange(replacement, live.from, live.to, EDIT_ORIGIN);
   });
 }
@@ -269,5 +301,8 @@ module.exports = {
   findSpecRange: findSpecRange,
   splitIndent: splitIndent,
   reindent: reindent,
-  reframe: reframe
+  reframe: reframe,
+  buildReplacement: buildReplacement,
+  isAtLineStart: isAtLineStart,
+  isAtLineEnd: isAtLineEnd
 };

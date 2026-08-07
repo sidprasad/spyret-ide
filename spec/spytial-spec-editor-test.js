@@ -34,10 +34,18 @@ function docSelecting(text, from, to) {
   return doc;
 }
 
-// Pull the YAML out and put it straight back, unedited.
-function roundTrip(raw) {
+// Apply `edited` over `raw`, given whether the replaced range already sits on
+// its own line at each end. Same composition openForEditor uses.
+function applyEdit(raw, edited, atStart, atEnd) {
   var split = specEditor.splitIndent(raw);
-  return specEditor.reframe(raw, specEditor.reindent(split.body, split.indent));
+  return specEditor.buildReplacement(raw, edited, split.indent, atStart, atEnd);
+}
+
+// Pull the YAML out and put it straight back, unedited. A range that carries
+// its own framing needs no help from the surrounding document, so the
+// line-boundary flags are irrelevant here; pass false to prove it.
+function roundTrip(raw) {
+  return applyEdit(raw, specEditor.splitIndent(raw).body, false, false);
 }
 
 describe("spytial spec editor: finding the spec", function() {
@@ -109,23 +117,78 @@ describe("spytial spec editor: indentation", function() {
   });
 
   it("opens the fences out when a one-line spec grows", function() {
-    var raw = "constraints: []";
-    var split = specEditor.splitIndent(raw);
-    expect(specEditor.reframe(raw, specEditor.reindent("constraints:\n  - cyclic: {}", split.indent)))
+    // ```constraints: []``` -- the fences sit on the same line, so the
+    // newlines have to come from somewhere.
+    expect(applyEdit("constraints: []", "constraints:\n  - cyclic: {}", false, false))
       .toEqual("\nconstraints:\n  - cyclic: {}\n");
   });
 
   it("leaves a one-line spec on one line when it stays short", function() {
-    var raw = "constraints: []";
-    var split = specEditor.splitIndent(raw);
-    expect(specEditor.reframe(raw, specEditor.reindent("directives: []", split.indent)))
+    expect(applyEdit("constraints: []", "directives: []", false, false))
       .toEqual("directives: []");
   });
 
+  it("does not double the newlines the document already has", function() {
+    // Selecting just the YAML inside ```\nconstraints: []\n``` leaves the
+    // newlines outside the range. Synthesizing more would open a blank line
+    // against each fence.
+    expect(applyEdit("constraints: []", "constraints:\n  - cyclic: {}", true, true))
+      .toEqual("constraints:\n  - cyclic: {}");
+  });
+
+  it("synthesizes only the side the document is missing", function() {
+    expect(applyEdit("constraints: []", "constraints:\n  - cyclic: {}", true, false))
+      .toEqual("constraints:\n  - cyclic: {}\n");
+    expect(applyEdit("constraints: []", "constraints:\n  - cyclic: {}", false, true))
+      .toEqual("\nconstraints:\n  - cyclic: {}");
+  });
+
   it("applies the block's indent to newly added lines", function() {
-    var raw = "\n    constraints: []\n    ";
-    var split = specEditor.splitIndent(raw);
-    expect(specEditor.reframe(raw, specEditor.reindent("constraints:\n  - cyclic: {}", split.indent)))
+    expect(applyEdit("\n    constraints: []\n    ", "constraints:\n  - cyclic: {}", false, false))
       .toEqual("\n    constraints:\n      - cyclic: {}\n    ");
+  });
+
+  it("strips the framing the spec editor puts around its own output", function() {
+    // SpecEditor serializes with surrounding newlines; left in, they land as
+    // blank lines against the fences.
+    expect(applyEdit("\n  constraints: []\n  ", "\nconstraints:\n  - cyclic: {}\n\n", false, false))
+      .toEqual("\n  constraints:\n    - cyclic: {}\n  ");
+  });
+
+  it("round-trips byte for byte even when the payload arrives padded", function() {
+    var raw = "\n  constraints: []\n  ";
+    expect(applyEdit(raw, "\n  constraints: []\n\n", false, false)).toEqual(raw);
+  });
+});
+
+describe("spytial spec editor: line-boundary detection", function() {
+  var TEXT = "fun f():\n  DR.genlayout(x, ```\nconstraints: []\n  ```)\nend";
+
+  function posOf(index) {
+    return new CodeMirror.Doc(TEXT, "pyret").posFromIndex(index);
+  }
+
+  it("sees a selection of just the YAML as sitting on its own line", function() {
+    var doc = new CodeMirror.Doc(TEXT, "pyret");
+    var from = posOf(TEXT.indexOf("constraints: []"));
+    var to = posOf(TEXT.indexOf("constraints: []") + "constraints: []".length);
+    expect(specEditor.isAtLineStart(doc, from)).toBe(true);
+    expect(specEditor.isAtLineEnd(doc, to)).toBe(true);
+  });
+
+  it("sees YAML butted against the fences as not on its own line", function() {
+    var inline = "DR.genlayout(x, ```constraints: []```)";
+    var doc = new CodeMirror.Doc(inline, "pyret");
+    var from = doc.posFromIndex(inline.indexOf("constraints: []"));
+    var to = doc.posFromIndex(inline.indexOf("constraints: []") + "constraints: []".length);
+    expect(specEditor.isAtLineStart(doc, from)).toBe(false);
+    expect(specEditor.isAtLineEnd(doc, to)).toBe(false);
+  });
+
+  it("treats leading indentation as still being at the line start", function() {
+    var indented = "  ```\n    constraints: []\n  ```";
+    var doc = new CodeMirror.Doc(indented, "pyret");
+    var from = doc.posFromIndex(indented.indexOf("constraints: []"));
+    expect(specEditor.isAtLineStart(doc, from)).toBe(true);
   });
 });
