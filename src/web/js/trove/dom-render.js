@@ -25,16 +25,6 @@
             return core.parseLayoutSpec(normalizedSpec);
         }
 
-        function renderPyretLayoutPreview(core, graphElement, dataInstance, cndSpec) {
-            const evaluationContext = { sourceData: dataInstance };
-            const evaluator = new core.Evaluators.SGraphQueryEvaluator();
-            evaluator.initialize(evaluationContext);
-            const layoutSpec = parseLayoutSpecSafe(core, cndSpec);
-            const layoutInstance = new core.LayoutInstance(layoutSpec, evaluator, 0, true);
-            const layoutResult = layoutInstance.generateLayout(dataInstance);
-            return graphElement.renderLayout(layoutResult.layout);
-        }
-
         ///// Layout Generation /////
         function genlayout(v, cndSpec) {
 
