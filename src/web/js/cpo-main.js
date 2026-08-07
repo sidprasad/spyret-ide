@@ -699,6 +699,7 @@
           "F6 and shift-F6: cycle focus through regions. " +
           "F7 or Control enter: run the code in the definitions window. " +
           "F11: insert image. " +
+          "Control alt y: edit the diagram spec at the cursor, or the selected YAML. " +
           "Control left: move cursor left by one word. " +
           "Control right: move cursor right by one word. " +
           "Alt left: if cursor is just before a right parenthesis or end keyword, " +
