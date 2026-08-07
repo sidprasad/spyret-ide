@@ -31,7 +31,7 @@
             evaluator.initialize(evaluationContext);
             const layoutSpec = parseLayoutSpecSafe(core, cndSpec);
             const layoutInstance = new core.LayoutInstance(layoutSpec, evaluator, 0, true);
-            const layoutResult = layoutInstance.generateLayout(dataInstance, {});
+            const layoutResult = layoutInstance.generateLayout(dataInstance);
             return graphElement.renderLayout(layoutResult.layout);
         }
 
@@ -67,8 +67,7 @@
                     instanceNumber,
                     ENABLE_ALIGNMENT_EDGES
                 );
-                const projections = {};
-                const layoutResult = layoutInstance.generateLayout(dataInstance, projections);
+                const layoutResult = layoutInstance.generateLayout(dataInstance);
                 const currentInstanceLayout = layoutResult.layout;
 
                 // String view
