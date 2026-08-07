@@ -10,6 +10,7 @@ var shareAPI = makeShareAPI(process.env.CURRENT_PYRET_RELEASE);
 var url = window.url = require('url.js');
 var modalPrompt = require('./modal-prompt.js');
 window.modalPrompt = modalPrompt;
+var spytialSpecEditor = require('./spytial-spec-editor.js');
 
 const LOG = true;
 window.ct_log = function(/* varargs */) {
@@ -196,21 +197,29 @@ $(function() {
     console.log("Using keymap: ", CodeMirror.keyMap.default, "macDefault: ", CodeMirror.keyMap.macDefault, "mac: ", mac);
     const modifier = mac ? "Cmd" : "Ctrl";
 
+    var extraKeys = {
+      "Shift-Enter": function(cm) { runFun(cm.getValue()); },
+      "Shift-Ctrl-Enter": function(cm) { runFun(cm.getValue()); },
+      "Tab": "indentAuto",
+      "Ctrl-I": reindentAllLines,
+      "Esc Left": "goBackwardSexp",
+      "Alt-Left": "goBackwardSexp",
+      "Esc Right": "goForwardSexp",
+      "Alt-Right": "goForwardSexp",
+      "Ctrl-Left": "goBackwardToken",
+      "Ctrl-Right": "goForwardToken",
+      [`${modifier}-F`]: "findPersistent",
+      [`${modifier}-/`]: "toggleComment",
+    };
+
+    // Edit a SPyTIAL layout spec through spytial-core's structured editor.
+    // Definitions window only; there are no spec strings to find in the REPL.
+    if (!options.simpleEditor) {
+      extraKeys["Ctrl-Alt-Y"] = function(cm) { spytialSpecEditor.openForEditor(cm); };
+    }
+
     var cmOptions = {
-      extraKeys: CodeMirror.normalizeKeyMap({
-        "Shift-Enter": function(cm) { runFun(cm.getValue()); },
-        "Shift-Ctrl-Enter": function(cm) { runFun(cm.getValue()); },
-        "Tab": "indentAuto",
-        "Ctrl-I": reindentAllLines,
-        "Esc Left": "goBackwardSexp",
-        "Alt-Left": "goBackwardSexp",
-        "Esc Right": "goForwardSexp",
-        "Alt-Right": "goForwardSexp",
-        "Ctrl-Left": "goBackwardToken",
-        "Ctrl-Right": "goForwardToken",
-        [`${modifier}-F`]: "findPersistent",
-        [`${modifier}-/`]: "toggleComment",
-      }),
+      extraKeys: CodeMirror.normalizeKeyMap(extraKeys),
       indentUnit: 2,
       tabSize: 2,
       viewportMargin: Infinity,
