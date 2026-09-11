@@ -161,6 +161,21 @@ add a directory here and figure out a good predicate that can be applied
 across the files (`runAndCheckAllTestsPassed` is probably a good candidate for
 many use cases).
 
+## Reify fidelity evaluation
+
+`test/reify-fidelity/` measures whether a Spytial datum built from a live Pyret
+value carries enough to reproduce `torepr` given fixed type definitions. It
+exports JSON using the pinned spytial-core bundle and reconstructs the string
+in a separate editor page using only that datum and a declared constructor
+schema/prelude. Expected reconstruction failures and actual information-loss
+witnesses are reported separately. See
+[test/reify-fidelity/README.md](test/reify-fidelity/README.md).
+
+```
+npm run test:reify-fidelity
+npm run reify-fidelity-report
+```
+
 ## Running with Docker
 
 A Dockerfile is provided for building and running the server locally without needing to install Node.js or the Heroku toolbelt.
