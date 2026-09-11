@@ -80,7 +80,7 @@
     "heroku-postbuild": "bash src/scripts/fetch-anchor.sh",
     "mocha": "heroku local:run mocha",
     "start": "heroku local:run supervisor --poll-interval 700 --watch src/run.js,src/server.js src/run.js",
-    "test:reify-fidelity": "mocha test/reify-fidelity/fidelity.test.js",
+    "test:reify-fidelity": "mocha test/reify-fidelity/*.test.js",
     "reify-fidelity-report": "node test/reify-fidelity/cli.js"
   },
   "repository": {

@@ -6,23 +6,18 @@
  *
  * One question, asked once per host language: does the Spytial datum say
  * enough to reproduce the language's own inspection output for a value? In
- * Pyret the inspection output is `torepr` -- what the REPL echoes -- and the
+ * Pyret the chosen textual inspection output is `torepr`, and the
  * two paths compared are
  *
  *   value -- torepr ------------------------------------------------> string
- *   value -- PyretDataInstance -> datum -> reify() -> eval -> torepr -> string
+ *   value -- PyretDataInstance -> JSON -> isolated decoder -------> string
  *
- * `reify()` (spytial-core) renders the datum back to Pyret constructor
- * notation. The harness evaluates that source in the IDE's own REPL and lets
- * Pyret's `torepr` print the result, exactly as the Python leg does with
- * `repr(reify(build_instance(v)))` and the Rust leg with
- * `format!("{:?}", from_datum(export(v)))`. Whatever `torepr` recovers on the
- * way back (a `link` chain prints as `[list: ...]`, a custom `_output` method
- * fires) is therefore credited to the datum rather than to spytial-core's
- * printer.
+ * The decoder receives JSON in a separate page and uses core's reification
+ * with the fixed CONSTRUCTOR_FIELDS schema and PRELUDE below. The schema and
+ * methods are decoder context, never metadata learned from a tested value.
  *
  * Every row is classified by its expected verdict, so the suite documents the
- * exact boundary of what the relational model reproduces today:
+ * tested boundary of this importer/decoder pair:
  *
  *   supported    -- the reconstructed string equals torepr(value); must pass.
  *   unsupported  -- torepr is deterministic, but the datum (or reify) does not
@@ -37,7 +32,8 @@
  * Note on mechanism: the runtime hands spytial-core raw values
  * ({dict, brands, $name}), not value skeletons. Plain data variants never
  * build a skeleton (torepr prints them from $constructor.$fieldNames); a
- * value's `_output` skeleton is consulted only on the way back, by torepr.
+ * value's `_output` skeleton is consulted by torepr on both paths, not by
+ * the importer.
  */
 
 const PRELUDE = `
@@ -61,14 +57,26 @@ data Shown: shown(a, b) with:
 end
 `;
 
+// Fixed type definitions available to the decoder, independent of the input.
+// Field order is not exported by PyretDataInstance. Lists, option, and either
+// match the bundled Pyret libraries; the other entries match PRELUDE above.
+const CONSTRUCTOR_FIELDS = {
+  point: ['x', 'y'], node: ['v', 'l', 'r'], leaf: [],
+  pair: ['fst', 'snd'], box: ['v'], zero: [], cell: ['next'],
+  wm: ['n'], sh: ['a'], custom: ['a'], shown: ['a', 'b'],
+  some: ['value'], none: [], left: ['v'], right: ['v'],
+  link: ['first', 'rest'], empty: [],
+};
+
 function row(category, name, expr, expect, note) {
   return { category, name, expr, expect, note };
 }
 const supported = (category, name, expr, note) => row(category, name, expr, 'supported', note);
-const unsupported = (category, name, expr, note) => row(category, name, expr, 'unsupported', note);
+const unsupported = (category, name, expr, note, failure = 'reify-eval-error') =>
+  Object.assign(row(category, name, expr, 'unsupported', note), { failure });
 
 /**
- * One row per Pyret value form, keyed to the runtime's own `torepr` dispatch
+ * Representative rows keyed to the runtime's `torepr` dispatch
  * (number, string, boolean, nothing, data value, plain object, tuple, raw
  * array, ref, function, value-skeleton `_output`).
  */
@@ -81,15 +89,15 @@ const ROWS = [
   unsupported('number', 'rational', '1/3',
     'a jsnums Rational at the root is neither a JS primitive nor a Pyret object; it becomes an empty PyretObject atom'),
   unsupported('number', 'rational-field', 'box(1/3)',
-    'the relationalizer turns {n, d} into the decimal n/d, which Pyret reads back as 3333333333333333/10000000000000000'),
+    'the relationalizer turns {n, d} into the decimal n/d, which Pyret reads back as 3333333333333333/10000000000000000', 'mismatch'),
   unsupported('number', 'decimal-literal', '0.5',
     'Pyret reads 0.5 as the exact rational 1/2 (see rational)'),
   unsupported('number', 'roughnum', '~3.14', 'Roughnum root (see rational)'),
   unsupported('number', 'roughnum-field', 'box(~1.5)',
-    'a Roughnum has n but no d, so it is neither atomic nor an object and the field is dropped'),
+    'a Roughnum has n but no d, so it is neither atomic nor an object and the field is dropped', 'mismatch'),
   unsupported('number', 'bignum', '123456789012345678901234567890', 'BigInteger root (see rational)'),
   unsupported('number', 'bignum-field', 'box(123456789012345678901234567890)',
-    'a BigInteger has neither n/d nor dict/brands and the field is dropped'),
+    'a BigInteger has neither n/d nor dict/brands and the field is dropped', 'mismatch'),
 
   // -- strings ---------------------------------------------------------------
   supported('string', 'plain', '"hi"'),
@@ -112,7 +120,7 @@ const ROWS = [
   // -- user data variants ----------------------------------------------------
   supported('data', 'singleton', 'leaf'),
   unsupported('data', 'nullary-constructor', 'zero()',
-    'reify prints a fieldless variant as the bare name, which for an arity-0 constructor is the function, not the value'),
+    'reify prints a fieldless variant as the bare name, which for an arity-0 constructor is the function, not the value', 'mismatch'),
   supported('data', 'flat', 'point(1, 2)'),
   supported('data', 'nested', 'box(point(1, 2))'),
   supported('data', 'tree', 'node(1, node(2, leaf, leaf), node(3, leaf, node(4, leaf, leaf)))'),
@@ -152,20 +160,21 @@ const ROWS = [
   unsupported('raw-array', 'root', '[raw-array: 1, 2]',
     'a JS array at the root is not a Pyret object; it becomes an empty PyretObject atom'),
   unsupported('raw-array', 'field', 'box([raw-array: 1, 2])',
-    'elements survive as tuples of the field relation, but reify prints them as [list: ...] and torepr says [raw-array: ...]'),
+    'elements survive as tuples of the field relation, but reify prints them as [list: ...] and torepr says [raw-array: ...]', 'mismatch'),
   unsupported('raw-array', 'duplicates', 'box([raw-array: 1, 1])',
-    'with numbersIdempotent (the default) both elements are the same atom and the duplicate tuple is dropped'),
+    'with numbersIdempotent (the default) both elements are the same atom and the duplicate tuple is dropped', 'mismatch'),
 
   // -- refs and cycles -------------------------------------------------------
   unsupported('ref', 'ref-field', 'cell(5)',
-    'a PRef has state/value rather than dict, so the field is dropped and reify prints the bare constructor'),
+    'a PRef has state/value rather than dict, so the field is dropped and reify prints the bare constructor', 'mismatch'),
   unsupported('cycle', 'ref-cycle', 'block:\n  c = cell(nothing)\n  c!{next: c}\n  c\nend',
-    'needs ref support first; reify then prints a <cyclic> marker, which is not Pyret source'),
+    'the PRef field is dropped, so this case decodes to the bare cell constructor', 'mismatch'),
 
   // -- functions -------------------------------------------------------------
   unsupported('function', 'lambda', 'lam(x): x end',
     'torepr prints <function> deterministically, but a PFunction has no dict and becomes an empty PyretObject atom'),
-  unsupported('function', 'field', 'box(lam(x): x end)', 'function-valued fields are dropped'),
+  unsupported('function', 'field', 'box(lam(x): x end)',
+    'the function becomes a generic PyretObject atom; reify emits an unbound PyretObject name'),
 
   // -- value skeletons (_output) --------------------------------------------
   supported('skeleton', 'custom-collection', 'custom(7)',
@@ -225,4 +234,4 @@ function arbitraries(fc) {
   return { value };
 }
 
-module.exports = { PRELUDE, ROWS, arbitraries };
+module.exports = { PRELUDE, CONSTRUCTOR_FIELDS, ROWS, arbitraries };

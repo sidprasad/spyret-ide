@@ -6,14 +6,13 @@
  * The IDE page exposes two things the harness needs: `window.__internalRepl`
  * (the REPL evaluator, installed by cpo-main.js) and `window.spytialcore`
  * (the pinned spytial-core bundle that dom-render.js diagrams with). Each case
- * runs entirely inside the page:
+ * uses separate producer and decoder pages:
  *
  *   1. evaluate `{v; torepr(v)}` for the case's source -> the live value and A
- *   2. relationalize the live value with PyretDataInstance -> datum, R = reify()
- *   3. evaluate `torepr(R)` -> B
+ *   2. relationalize with PyretDataInstance and export JSON through Node
+ *   3. in the decoder page, reify only that JSON and evaluate `torepr(R)` -> B
  *
- * and reports A, R, B and a verdict. No DOM rendering happens, so a case costs
- * two REPL interactions and a few tens of milliseconds.
+ * The decoder gets neither the expression, A, nor any producer caches.
  */
 
 const fs = require('fs');
@@ -110,18 +109,35 @@ async function openIde(baseUrl) {
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: process.env.SHOW_BROWSER ? false : 'new',
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
   });
-  const page = await browser.newPage();
-  page.setDefaultTimeout(180000);
-  await page.goto(`${baseUrl}/editor`, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => {
-    const loader = document.getElementById('loader');
-    return loader && getComputedStyle(loader).display === 'none'
-      && window.__internalRepl
-      && window.spytialcore && window.spytialcore.PyretDataInstance;
-  }, { timeout: 180000 });
-  return { browser, page };
+  try {
+    const pages = await Promise.all([browser.newPage(), browser.newPage()]);
+    // Loading two 40 MB Pyret runtimes concurrently creates substantial
+    // compilation/memory pressure. Initialize the pages sequentially.
+    for (const page of pages) {
+      page.setDefaultTimeout(180000);
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      page.on('requestfailed', (r) => errors.push(`${r.url()}: ${r.failure().errorText}`));
+      try {
+        await page.goto(`${baseUrl}/editor`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => {
+          const loader = document.getElementById('loader');
+          return loader && getComputedStyle(loader).display === 'none'
+            && window.__internalRepl
+            && window.spytialcore && window.spytialcore.PyretDataInstance;
+        }, { timeout: 180000, polling: 100 });
+      } catch (e) {
+        throw new Error(`IDE readiness failed: ${e.message}\n${errors.slice(-10).join('\n')}`);
+      }
+    }
+    return { browser, page: pages[0], decoder: pages[1] };
+  } catch (e) {
+    await browser.close();
+    throw e;
+  }
 }
 
 /**
@@ -187,14 +203,15 @@ function pageRuntime() {
     return new PDI(v, options);
   }
   function datumOf(di) {
-    return {
-      atoms: di.getAtoms().map((a) => ({ id: a.id, type: a.type, label: String(a.label) })),
-      relations: di.getRelations().map((r) => ({ id: r.id, tuples: r.tuples.map((t) => t.atoms.slice()) })),
-    };
+    return JSON.parse(JSON.stringify({
+      atoms: di.getAtoms(), relations: di.getRelations(), types: di.getTypes(),
+    }));
   }
 
+  let constructorFields;
   window.__reifyFidelity = {
-    async init(prelude) {
+    async init(prelude, fields) {
+      constructorFields = fields;
       const u = unwrap(await repl.restartInteractions(prelude, { typeCheck: false, checkAll: false }));
       return u.ok ? { ok: true } : { ok: false, error: u.error };
     },
@@ -203,7 +220,7 @@ function pageRuntime() {
       const m = script && /spytial-core@([^/]+)/.exec(script);
       return m ? m[1] : 'unknown';
     },
-    async runCase(expr, options) {
+    async exportCase(expr, options) {
       const t0 = performance.now();
       const row = { expr };
       const finish = (verdict, error) => {
@@ -221,31 +238,76 @@ function pageRuntime() {
       try {
         PDI.clearGlobalConstructorCache();
         const di = relationalize(value, options || {});
-        row.R = di.reify();
         row.datum = datumOf(di);
       } catch (e) {
         return finish('relationalize-error', String(e).slice(0, 300));
+      } finally {
+        PDI.clearGlobalConstructorCache();
       }
-
+      return finish('exported');
+    },
+    async decode(datum) {
+      const row = {};
+      try {
+        // The only constructor metadata is fixed before any corpus value is
+        // made. Never copy getGlobalConstructorCache() from the producer.
+        PDI.clearGlobalConstructorCache();
+        Object.entries(constructorFields).forEach(([name, fields]) => {
+          // PDI has no public schema-registration API. Synthetic zero-valued
+          // records register only these fixed field names via its constructor.
+          const dict = {};
+          fields.forEach((field) => { dict[field] = 0; });
+          new PDI({ $name: name, dict });
+        });
+        const fresh = new window.spytialcore.JSONDataInstance(datum, {
+          mergeRelations: false, deduplicateAtoms: false,
+        });
+        // Use the method belonging to the same PDI class as the schema cache.
+        // The editor's component bundle can install another core export copy.
+        // reify reads this fresh JSON instance through getAtoms/getRelations;
+        // there is no PDI containing an original value on this path.
+        row.R = PDI.prototype.reify.call(fresh);
+      } catch (e) {
+        return { verdict: 'decode-error', error: String(e).slice(0, 300) };
+      } finally {
+        PDI.clearGlobalConstructorCache();
+      }
       const b = await run('torepr(' + row.R + ')');
-      if (!b.ok) return finish('reify-eval-error', b.error);
+      if (!b.ok) return Object.assign(row, { verdict: 'reify-eval-error', error: b.error });
       row.B = b.answer;
-      return finish(row.A === row.B ? 'pass' : 'mismatch');
+      return Object.assign(row, { verdict: 'decoded' });
     },
   };
   return true;
 }
 
-async function installRunner(page, prelude) {
-  await page.evaluate(pageRuntime);
-  const r = await page.evaluate((p) => window.__reifyFidelity.init(p), prelude);
-  if (!r.ok) throw new Error(`prelude failed to run: ${r.error}`);
-  return page.evaluate(() => window.__reifyFidelity.coreVersion());
+async function installRunner(ide, prelude, constructorFields) {
+  const versions = [];
+  for (const page of [ide.page, ide.decoder]) {
+    await page.evaluate(pageRuntime);
+    const r = await page.evaluate((p, f) => window.__reifyFidelity.init(p, f), prelude, constructorFields);
+    if (!r.ok) throw new Error(`prelude failed to run: ${r.error}`);
+    versions.push(await page.evaluate(() => window.__reifyFidelity.coreVersion()));
+  }
+  if (versions[0] !== versions[1]) throw new Error('Producer and decoder core versions differ');
+  return versions[0];
 }
 
 /** Run one case; returns { expr, A, R, B, datum, verdict, error, ms }. */
-function runCase(page, expr, options) {
-  return page.evaluate((e, o) => window.__reifyFidelity.runCase(e, o), expr, options || {});
+async function runCase(ide, expr, options) {
+  const start = Date.now();
+  const row = await ide.page.evaluate((e, o) => window.__reifyFidelity.exportCase(e, o), expr, options || {});
+  if (row.verdict !== 'exported') return row;
+  // Only this serialized payload crosses into the decoder's realm.
+  const decoded = await decodeDatum(ide, row.datum);
+  Object.assign(row, decoded);
+  if (row.verdict === 'decoded') row.verdict = row.A === row.B ? 'pass' : 'mismatch';
+  row.ms = Date.now() - start;
+  return row;
+}
+
+function decodeDatum(ide, datum) {
+  return ide.decoder.evaluate((json) => window.__reifyFidelity.decode(JSON.parse(json)), JSON.stringify(datum));
 }
 
 /** One-line-per-path explanation of a row, for assertion messages and reports. */
@@ -259,4 +321,4 @@ function explain(r) {
   return lines.join('\n');
 }
 
-module.exports = { ensureServer, openIde, installRunner, runCase, explain, findChrome };
+module.exports = { ensureServer, openIde, installRunner, runCase, decodeDatum, explain, findChrome };

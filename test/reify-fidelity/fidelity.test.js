@@ -4,7 +4,7 @@
  * Tier B reify fidelity -- the Pyret leg of the cross-language evaluation.
  *
  *   value -> torepr -> string                                  (A)
- *   value -> PyretDataInstance -> reify() -> eval -> torepr    (B)
+ *   value -> PyretDataInstance -> JSON -> isolated decoder -> string (B)
  *
  * Passes when the systematic corpus lands exactly on its documented boundary
  * (every `supported` row has A == B, every `unsupported` row does not) and
@@ -21,15 +21,18 @@
 const assert = require('assert');
 const path = require('path');
 const fc = require('fast-check');
-const { PRELUDE, ROWS, arbitraries } = require('./corpus');
-const { ensureServer, openIde, installRunner, runCase, explain } = require('./harness');
-const { summarize, format, writeReport } = require('./report');
+const { PRELUDE, CONSTRUCTOR_FIELDS, ROWS, arbitraries } = require('./corpus');
+const { ensureServer, openIde, installRunner, runCase, decodeDatum, explain } = require('./harness');
+const { isViolation, format, writeReport } = require('./report');
 
 const REPORT = process.env.REIFY_REPORT || path.resolve(__dirname, '..', '..', 'build', 'reify-fidelity-report.json');
 const NUM_RUNS = Number(process.env.REIFY_FUZZ_RUNS || 100);
-const SEED = process.env.REIFY_SEED !== undefined ? Number(process.env.REIFY_SEED) : undefined;
+const SEED = Number(process.env.REIFY_SEED || 1);
+if (!Number.isInteger(NUM_RUNS) || NUM_RUNS < 1 || !Number.isInteger(SEED)) {
+  throw new Error('REIFY_FUZZ_RUNS must be positive and REIFY_SEED must be an integer');
+}
 
-describe('Reify fidelity (Tier B): torepr(v) == torepr(eval(reify(rel(v))))', function () {
+describe('Pyret inspection fidelity: torepr(v) == decode(JSON datum, fixed context)', function () {
   this.timeout(30 * 60 * 1000);
 
   const rows = [];
@@ -40,21 +43,27 @@ describe('Reify fidelity (Tier B): torepr(v) == torepr(eval(reify(rel(v))))', fu
   before(async function () {
     server = await ensureServer();
     ide = await openIde(server.baseUrl);
-    coreVersion = await installRunner(ide.page, PRELUDE);
+    coreVersion = await installRunner(ide, PRELUDE, CONSTRUCTOR_FIELDS);
   });
 
   after(async function () {
-    if (rows.length) {
-      const meta = { baseUrl: server && server.baseUrl, coreVersion, seed: SEED, numRuns: NUM_RUNS };
+    try {
+      const meta = {
+        baseUrl: server && server.baseUrl, coreVersion, seed: SEED, numRuns: NUM_RUNS,
+        expectedCases: ROWS.filter((r) => r.expect !== 'out-of-scope').map((r) => `${r.category}/${r.name}`),
+        decoderContext: { prelude: PRELUDE, constructorFields: CONSTRUCTOR_FIELDS },
+      };
       const report = writeReport(REPORT, rows, meta);
       // eslint-disable-next-line no-console
       console.log('\n' + format(report.summary, meta) + `\n  report: ${REPORT}\n`);
+      assert.ok(report.summary.boundaryHolds, format(report.summary, meta));
+    } finally {
+      try { if (ide) await ide.browser.close(); }
+      finally { if (server) server.stop(); }
     }
-    if (ide) await ide.browser.close();
-    if (server) server.stop();
   });
 
-  describe('systematic corpus: one row per Pyret value form', function () {
+  describe('systematic corpus: representative Pyret value forms', function () {
     for (const row of ROWS) {
       const title = `${row.category}: ${row.name} [${row.expect}]`;
       if (row.expect === 'out-of-scope') {
@@ -63,15 +72,11 @@ describe('Reify fidelity (Tier B): torepr(v) == torepr(eval(reify(rel(v))))', fu
       }
       it(title, async function () {
         const r = Object.assign(
-          { source: 'corpus', category: row.category, name: row.name, expect: row.expect, note: row.note },
-          await runCase(ide.page, row.expr, row.options),
+          { source: 'corpus', category: row.category, name: row.name, expect: row.expect, failure: row.failure, note: row.note },
+          await runCase(ide, row.expr, row.options),
         );
         rows.push(r);
-        if (row.expect === 'supported') {
-          assert.ok(r.verdict === 'pass', `supported row does not round-trip:\n${explain(r)}`);
-        } else {
-          assert.ok(r.verdict !== 'pass', `unsupported row now passes; promote it to supported:\n${explain(r)}`);
-        }
+        assert.ok(!isViolation(r), `expected ${row.failure || 'pass'}:\n${explain(r)}`);
       });
     }
   });
@@ -81,7 +86,7 @@ describe('Reify fidelity (Tier B): torepr(v) == torepr(eval(reify(rel(v))))', fu
       const { value } = arbitraries(fc);
       await fc.assert(
         fc.asyncProperty(value, async (expr) => {
-          const r = Object.assign({ source: 'generated', category: 'value' }, await runCase(ide.page, expr));
+          const r = Object.assign({ source: 'generated', category: 'value' }, await runCase(ide, expr));
           rows.push(r);
           if (r.verdict !== 'pass') throw new Error(explain(r));
         }),
@@ -90,8 +95,31 @@ describe('Reify fidelity (Tier B): torepr(v) == torepr(eval(reify(rel(v))))', fu
     });
   });
 
-  it('the documented boundary holds', function () {
-    const summary = summarize(rows);
-    assert.ok(summary.boundaryHolds, format(summary));
+  describe('datum isolation and information-loss witnesses', function () {
+    it('decodes JSON independently of import caches and relation enumeration', async function () {
+      const r = await runCase(ide, 'node(1, leaf, leaf)');
+      assert.strictEqual(r.verdict, 'pass', explain(r));
+      const payload = JSON.parse(JSON.stringify(r.datum));
+      payload.relations.reverse();
+      await ide.decoder.evaluate(() => {
+        const PDI = window.spytialcore.PyretDataInstance;
+        new PDI({ $name: 'node', dict: { l: 0, r: 0, v: 0 } });
+      });
+      const again = await decodeDatum(ide, payload);
+      assert.strictEqual(again.B, r.A);
+      assert.strictEqual(again.R, 'node(1, leaf, leaf)');
+    });
+
+    for (const [left, right] of [['nothing', '{}'], ['box([raw-array: 1])', 'box([raw-array: 1, 1])']]) {
+      it(`witnesses identical exported data but distinct torepr: ${left} / ${right}`, async function () {
+        const a = await runCase(ide, left);
+        const b = await runCase(ide, right);
+        assert.ok(a.datum && b.datum, `${explain(a)}\n${explain(b)}`);
+        assert.strictEqual(typeof a.A, 'string');
+        assert.strictEqual(typeof b.A, 'string');
+        assert.deepStrictEqual(a.datum, b.datum);
+        assert.notStrictEqual(a.A, b.A);
+      });
+    }
   });
 });

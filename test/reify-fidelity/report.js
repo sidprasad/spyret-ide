@@ -13,11 +13,12 @@ const path = require('path');
 function isViolation(r) {
   if (r.source === 'generated') return r.verdict !== 'pass';
   if (r.expect === 'supported') return r.verdict !== 'pass';
-  if (r.expect === 'unsupported') return r.verdict === 'pass';
-  return false;
+  if (r.expect === 'unsupported') return !['mismatch', 'reify-eval-error'].includes(r.failure)
+    || r.verdict !== r.failure;
+  return r.expect !== 'out-of-scope';
 }
 
-function summarize(rows) {
+function summarize(rows, meta = {}) {
   const byKey = new Map();
   const bump = (key, ok) => {
     const e = byKey.get(key) || { pass: 0, total: 0 };
@@ -40,7 +41,11 @@ function summarize(rows) {
 
   const corpus = rows.filter((r) => r.source !== 'generated' && r.expect !== 'out-of-scope');
   const generated = rows.filter((r) => r.source === 'generated');
-  const rate = (xs) => (xs.length ? xs.filter((r) => r.verdict === 'pass').length / xs.length : 1);
+  const rate = (xs) => (xs.length ? xs.filter((r) => r.verdict === 'pass').length / xs.length : null);
+  const actualCases = new Set(corpus.map((r) => `${r.category}/${r.name}`));
+  const missingCases = (meta.expectedCases || []).filter((key) => !actualCases.has(key));
+  const complete = rows.length > 0 && missingCases.length === 0
+    && (meta.numRuns === undefined || generated.length >= meta.numRuns);
 
   return {
     counts: { rows: rows.length, corpus: corpus.length, generated: generated.length, verdicts },
@@ -50,17 +55,19 @@ function summarize(rows) {
     generatedPassRate: rate(generated),
     scores,
     violations: rows.filter(isViolation),
-    boundaryHolds: rows.every((r) => !isViolation(r)),
+    complete,
+    missingCases,
+    boundaryHolds: complete && rows.every((r) => !isViolation(r)),
   };
 }
 
 function pct(x) {
-  return `${(x * 100).toFixed(1)}%`;
+  return x === null ? 'n/a' : `${(x * 100).toFixed(1)}%`;
 }
 
 function format(summary, meta = {}) {
   const lines = [];
-  lines.push('=== Reify fidelity report (Tier B: torepr vs torepr(eval(reify(datum)))) ===');
+  lines.push('=== Pyret fidelity: torepr(v) vs decode(JSON datum, fixed context) ===');
   if (meta.baseUrl) lines.push(`  IDE: ${meta.baseUrl}   spytial-core: ${meta.coreVersion || '?'}`);
   for (const s of summary.scores) {
     lines.push(`  ${s.group.padEnd(20)} ${s.category.padEnd(14)} ${String(s.pass).padStart(3)}/${String(s.total).padEnd(3)} ${pct(s.rate)}`);
@@ -69,6 +76,7 @@ function format(summary, meta = {}) {
   lines.push(`  supported rows passing:    ${pct(summary.supportedPassRate)}`);
   lines.push(`  generated values passing:  ${pct(summary.generatedPassRate)}  (${summary.counts.generated} values)`);
   lines.push(`  verdicts: ${JSON.stringify(summary.counts.verdicts)}`);
+  if (!summary.complete) lines.push(`  INCOMPLETE RUN; missing cases: ${summary.missingCases.join(', ') || '(check generated count)'}`);
   if (summary.violations.length) {
     lines.push(`  boundary violations: ${summary.violations.length}`);
     for (const v of summary.violations.slice(0, 20)) {
@@ -85,16 +93,11 @@ function format(summary, meta = {}) {
   return lines.join('\n');
 }
 
-/** Keep the datum only where it helps explain a failure, to keep the JSON small. */
-function compactRows(rows) {
-  return rows.map((r) => (r.verdict === 'pass' ? Object.assign({}, r, { datum: undefined }) : r));
-}
-
 function writeReport(file, rows, meta = {}) {
   const report = Object.assign(
     { generatedAt: new Date().toISOString() },
     meta,
-    { summary: summarize(rows), rows: compactRows(rows) },
+    { summary: summarize(rows, meta), rows },
   );
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(report, null, 2));

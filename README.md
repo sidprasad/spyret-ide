@@ -164,9 +164,11 @@ many use cases).
 ## Reify fidelity evaluation
 
 `test/reify-fidelity/` measures whether a Spytial datum built from a live Pyret
-value carries enough to reproduce `torepr` of that value: it relationalizes the
-value with the pinned spytial-core bundle, evaluates `reify()`'s constructor
-notation back in the REPL, and compares the two `torepr` strings. See
+value carries enough to reproduce `torepr` given fixed type definitions. It
+exports JSON using the pinned spytial-core bundle and reconstructs the string
+in a separate editor page using only that datum and a declared constructor
+schema/prelude. Expected reconstruction failures and actual information-loss
+witnesses are reported separately. See
 [test/reify-fidelity/README.md](test/reify-fidelity/README.md).
 
 ```
