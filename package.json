@@ -81,7 +81,9 @@
     "mocha": "heroku local:run mocha",
     "start": "heroku local:run supervisor --poll-interval 700 --watch src/run.js,src/server.js src/run.js",
     "test:reify-fidelity": "mocha test/reify-fidelity/*.test.js",
-    "reify-fidelity-report": "node test/reify-fidelity/cli.js"
+    "reify-fidelity-report": "node test/reify-fidelity/cli.js",
+    "test:constructor-data": "mocha test/constructor-data/*.test.js",
+    "test:constructor-data:unit": "mocha test/constructor-data/model.test.js"
   },
   "repository": {
     "type": "git",

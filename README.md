@@ -163,6 +163,15 @@ many use cases).
 
 ## Reify fidelity evaluation
 
+For the newer, explicitly specified **constructor-data model** and a decoder
+that reconstructs inspection strings without evaluating Pyret, see
+[test/constructor-data/README.md](test/constructor-data/README.md). This is an
+opt-in experimental adapter; it does not change the existing diagram path.
+
+```
+npm run test:constructor-data
+```
+
 `test/reify-fidelity/` measures whether a Spytial datum built from a live Pyret
 value carries enough to reproduce `torepr` given fixed type definitions. It
 exports JSON using the pinned spytial-core bundle and reconstructs the string

@@ -105,7 +105,7 @@ async function ensureServer(options = {}) {
 }
 
 /** Open the editor and wait until Pyret, the REPL hook and spytial-core are ready. */
-async function openIde(baseUrl) {
+async function openIde(baseUrl, pageCount = 2) {
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: process.env.SHOW_BROWSER ? false : 'new',
@@ -113,7 +113,7 @@ async function openIde(baseUrl) {
       '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
   });
   try {
-    const pages = await Promise.all([browser.newPage(), browser.newPage()]);
+    const pages = await Promise.all(Array.from({ length: pageCount }, () => browser.newPage()));
     // Loading two 40 MB Pyret runtimes concurrently creates substantial
     // compilation/memory pressure. Initialize the pages sequentially.
     for (const page of pages) {
@@ -156,6 +156,7 @@ function pageRuntime() {
   function failureMessage(rt, res) {
     let e = res && res.exn;
     if (e && e.exn !== undefined) e = e.exn;
+    if (e instanceof Error) return e.name + ': ' + e.message + '\n' + String(e.stack).slice(0, 1000);
     return 'runtime error: ' + String(safeRepr(rt, e)).slice(0, 300);
   }
   // A REPL result is { result: Either, stats }. right(opaque) wraps the
@@ -219,6 +220,27 @@ function pageRuntime() {
       const script = Array.from(document.scripts).map((s) => s.src).find((s) => /spytial-core@/.test(s));
       const m = script && /spytial-core@([^/]+)/.exec(script);
       return m ? m[1] : 'unknown';
+    },
+    async exportConstructorCase(expr) {
+      // Evaluate only the value first. Reject out-of-domain values before any
+      // printer runs (a custom _output may be effectful or fail).
+      const a = await run(expr);
+      if (!a.ok) return { verdict: 'value-error', error: a.error };
+      let datum;
+      try {
+        datum = window.PyretConstructorDatum.exportValue(a.rt, a.answer);
+      } catch (e) {
+        return { verdict: e.name === 'UnsupportedValue' ? 'rejected' : 'export-error',
+          reason: e.reason, error: String(e) };
+      }
+      // The reference printer sees the SAME value, not a second evaluation.
+      // Default printing on our finite immutable subset is synchronous.
+      try {
+        const A = a.rt.toReprJS(a.answer, a.rt.ReprMethods._torepr);
+        return { verdict: 'exported', A, datum };
+      } catch (e) {
+        return { verdict: 'reference-error', error: String(e), datum };
+      }
     },
     async exportCase(expr, options) {
       const t0 = performance.now();
@@ -321,4 +343,4 @@ function explain(r) {
   return lines.join('\n');
 }
 
-module.exports = { ensureServer, openIde, installRunner, runCase, decodeDatum, explain, findChrome };
+module.exports = { ensureServer, openIde, installRunner, runCase, decodeDatum, explain, findChrome, pageRuntime };
