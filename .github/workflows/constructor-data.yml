@@ -1,0 +1,105 @@
+name: Pyret constructor round trips
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: constructor-data-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  round-trip:
+    name: Real Pyret / seed ${{ matrix.seed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - seed: 1
+            runs: 10
+            schemas: 5
+          - seed: 2
+            runs: 3
+            schemas: 2
+    defaults:
+      run:
+        shell: bash
+        working-directory: ide
+    steps:
+      - name: Check out IDE
+        uses: actions/checkout@v7
+        with:
+          path: ide
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: ide/package-lock.json
+
+      - name: Record source and browser versions
+        run: |
+          mkdir -p build/constructor-data-ci
+          {
+            git log -1 --format='IDE %H'
+            node -p 'require("fs").readFileSync("src/web/editor.html", "utf8").match(/https:\/\/cdn\.jsdelivr\.net\/npm\/spytial-core@[^" ]+/g).join("\n")'
+            node --version
+            npm --version
+            google-chrome --version
+            node -p '"Pyret " + require("./package-lock.json").packages["node_modules/pyret-lang"].resolved'
+          } | tee build/constructor-data-ci/provenance.txt
+
+      - name: Install locked IDE dependencies
+        run: |
+          # The lockfile contains public GitHub SSH URLs; CI needs no SSH key.
+          git config --global url.https://github.com/.insteadOf ssh://git@github.com/
+          npm ci --ignore-scripts
+
+      - name: Check report validity and harness sequencing
+        run: npm run test:constructor-data:unit
+
+      - name: Build the IDE and its real Pyret runtime
+        timeout-minutes: 15
+        env:
+          ASSET_BASE_URL: http://localhost:4999
+        run: |
+          ln -s node_modules/pyret-lang pyret
+          make -C pyret phaseA-deps
+          npx --no-install webpack
+          make web
+          make build/web/js/cpo-main.jarr
+
+      - name: Check released-core regressions and cache isolation
+        timeout-minutes: 10
+        env:
+          CONSTRUCTOR_REPORT: build/constructor-data-ci/regression-report.json
+          REIFY_REPORT: build/constructor-data-ci/desired-behavior-report.json
+          REIFY_SEED: ${{ matrix.seed }}
+        run: npx --no-install mocha 'test/pyret-round-trip/*.test.js' 'test/constructor-data/*.test.js' 'test/reify-fidelity/*.test.js' | tee build/constructor-data-ci/regression.log
+
+      - name: Require exact real-Pyret inspection round trips
+        timeout-minutes: 15
+        env:
+          CONSTRUCTOR_SEED: ${{ matrix.seed }}
+          CONSTRUCTOR_RUNS: ${{ matrix.runs }}
+          CONSTRUCTOR_SCHEMAS: ${{ matrix.schemas }}
+          CONSTRUCTOR_REPORT: build/constructor-data-ci/report.json
+        run: npm run constructor-data-report | tee build/constructor-data-ci/measurement.log
+
+      - name: Upload report and provenance, including failures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: constructor-data-seed-${{ matrix.seed }}
+          path: ide/build/constructor-data-ci/
+          if-no-files-found: warn
+          retention-days: 14

@@ -163,16 +163,36 @@ many use cases).
 
 ## Reify fidelity evaluation
 
-`test/reify-fidelity/` measures whether a Spytial datum built from a live Pyret
-value carries enough to reproduce `torepr` given fixed type definitions. It
-exports JSON using the pinned spytial-core bundle and reconstructs the string
-in a separate editor page using only that datum and a declared constructor
-schema/prelude. Expected reconstruction failures and actual information-loss
-witnesses are reported separately. See
+For an end-to-end test of the **working relationalizer/reifier** against
+Spyret's actual Pyret runtime, see
+[test/constructor-data/README.md](test/constructor-data/README.md). It serializes
+the datum without a producer cache, evaluates the reified expression in fresh
+Pyret interactions, and compares `torepr` strings with an actual Pyret check.
+There is no replacement relationalizer. The editor and PR CI use the released
+spytial-core **6.0.0** CDN bundles. Both the fixed regression suite and the
+strict measurement require exact matches for every planned constructor-data
+fixture; any mismatch or incomplete run fails. The documented 4.4.3 failures
+are historical measurements, not accepted failures in the current suite.
+
+```
+npm run test:constructor-data
+npm run constructor-data-report
+```
+
+`test/reify-fidelity/` extends the corpus to broader Pyret value forms using
+the **same** `test/pyret-round-trip/` harness as the constructor suite. Both
+pass live values directly to the production relationalizer, use default JSON
+normalization, and reify with empty constructor caches. There is no primitive
+adapter or supplied field schema; declarations are loaded only after reification
+to evaluate the completed expression. Every in-scope test specifies the desired exact round trip;
+missing behavior and information-preservation requirements are visibly pending,
+not passing tests that require current failures to persist. The diagnostic CLI
+measures all cases and exits nonzero on any gap. See
 [test/reify-fidelity/README.md](test/reify-fidelity/README.md).
 
 ```
 npm run test:reify-fidelity
+REIFY_INCLUDE_PENDING=1 npm run test:reify-fidelity
 npm run reify-fidelity-report
 ```
 

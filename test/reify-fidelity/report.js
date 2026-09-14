@@ -2,20 +2,15 @@
 
 /**
  * Aggregates case rows into the fidelity report: per-category pass rates for
- * the systematic corpus and the generated values, plus every boundary
- * violation (a supported row that fails, an unsupported row that passes, or a
- * generated value that fails).
+ * the systematic corpus and generated values. Every measured failure is a
+ * gap against the desired behavior, even if it is a known pending feature.
  */
 
 const fs = require('fs');
 const path = require('path');
 
 function isViolation(r) {
-  if (r.source === 'generated') return r.verdict !== 'pass';
-  if (r.expect === 'supported') return r.verdict !== 'pass';
-  if (r.expect === 'unsupported') return !['mismatch', 'reify-eval-error'].includes(r.failure)
-    || r.verdict !== r.failure;
-  return r.expect !== 'out-of-scope';
+  return (r.source === 'generated' || r.expect !== 'out-of-scope') && r.verdict !== 'pass';
 }
 
 function summarize(rows, meta = {}) {
@@ -43,12 +38,22 @@ function summarize(rows, meta = {}) {
   const generated = rows.filter((r) => r.source === 'generated');
   const rate = (xs) => (xs.length ? xs.filter((r) => r.verdict === 'pass').length / xs.length : null);
   const actualCases = new Set(corpus.map((r) => `${r.category}/${r.name}`));
-  const missingCases = (meta.expectedCases || []).filter((key) => !actualCases.has(key));
-  const complete = rows.length > 0 && missingCases.length === 0
-    && (meta.numRuns === undefined || generated.length >= meta.numRuns);
+  const expectedCases = meta.expectedCases || [...actualCases];
+  const expected = new Set(expectedCases);
+  const pending = new Set(meta.pendingCases || []);
+  const missingCases = expectedCases.filter(key => !actualCases.has(key));
+  const pendingCases = missingCases.filter(key => pending.has(key));
+  const requiredMissingCases = missingCases.filter(key => !pending.has(key));
+  const unexpectedCases = [...actualCases].filter(key => !expected.has(key));
+  const validManifest = expected.size === expectedCases.length && [...pending].every(key => expected.has(key));
+  const runErrors = meta.runErrors || [];
+  const validRun = !runErrors.length && rows.length > 0 && validManifest && actualCases.size === corpus.length
+    && !unexpectedCases.length && (meta.numRuns === undefined || generated.length >= meta.numRuns);
+  const complete = validRun && missingCases.length === 0;
+  const requiredComplete = validRun && requiredMissingCases.length === 0;
 
   return {
-    counts: { rows: rows.length, corpus: corpus.length, generated: generated.length, verdicts },
+    counts: { rows: rows.length, corpus: corpus.length, generated: generated.length, pending: pendingCases.length, verdicts },
     /** headline: how much of the systematic corpus round-trips today */
     corpusPassRate: rate(corpus),
     supportedPassRate: rate(corpus.filter((r) => r.expect === 'supported')),
@@ -57,7 +62,12 @@ function summarize(rows, meta = {}) {
     violations: rows.filter(isViolation),
     complete,
     missingCases,
-    boundaryHolds: complete && rows.every((r) => !isViolation(r)),
+    pendingCases,
+    requiredMissingCases,
+    unexpectedCases,
+    runErrors,
+    requiredChecksHold: requiredComplete && rows.every(r => !isViolation(r)),
+    fidelityHolds: complete && rows.every(r => !isViolation(r)),
   };
 }
 
@@ -67,7 +77,7 @@ function pct(x) {
 
 function format(summary, meta = {}) {
   const lines = [];
-  lines.push('=== Pyret fidelity: torepr(v) vs decode(JSON datum, fixed context) ===');
+  lines.push('=== Pyret fidelity: working datum-only round trips ===');
   if (meta.baseUrl) lines.push(`  IDE: ${meta.baseUrl}   spytial-core: ${meta.coreVersion || '?'}`);
   for (const s of summary.scores) {
     lines.push(`  ${s.group.padEnd(20)} ${s.category.padEnd(14)} ${String(s.pass).padStart(3)}/${String(s.total).padEnd(3)} ${pct(s.rate)}`);
@@ -76,9 +86,12 @@ function format(summary, meta = {}) {
   lines.push(`  supported rows passing:    ${pct(summary.supportedPassRate)}`);
   lines.push(`  generated values passing:  ${pct(summary.generatedPassRate)}  (${summary.counts.generated} values)`);
   lines.push(`  verdicts: ${JSON.stringify(summary.counts.verdicts)}`);
-  if (!summary.complete) lines.push(`  INCOMPLETE RUN; missing cases: ${summary.missingCases.join(', ') || '(check generated count)'}`);
+  for (const error of summary.runErrors) lines.push(`  RUN ERROR: ${error}`);
+  if (summary.pendingCases.length) lines.push(`  PENDING desired behaviors (${summary.pendingCases.length}): ${summary.pendingCases.join(', ')}`);
+  lines.push(`  full desired corpus satisfied: ${summary.fidelityHolds}`);
+  if (!summary.complete) lines.push(`  INCOMPLETE MEASUREMENT; unmeasured cases: ${summary.missingCases.join(', ') || '(check manifest/generated count)'}`);
   if (summary.violations.length) {
-    lines.push(`  boundary violations: ${summary.violations.length}`);
+    lines.push(`  gaps against desired behavior: ${summary.violations.length}`);
     for (const v of summary.violations.slice(0, 20)) {
       const tag = v.source === 'generated' ? 'generated' : `${v.category}/${v.name} [${v.expect}]`;
       lines.push(`    ${tag}: ${v.verdict}${v.error ? ' -- ' + v.error : ''}`);
@@ -88,7 +101,7 @@ function format(summary, meta = {}) {
       if (v.B !== undefined) lines.push(`      B: ${v.B}`);
     }
   } else {
-    lines.push('  boundary violations: none');
+    lines.push('  measured gaps: none (pending cases, if any, remain unverified)');
   }
   return lines.join('\n');
 }

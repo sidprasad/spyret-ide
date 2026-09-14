@@ -8,9 +8,10 @@
  * (the pinned spytial-core bundle that dom-render.js diagrams with). Each case
  * uses separate producer and decoder pages:
  *
- *   1. evaluate `{v; torepr(v)}` for the case's source -> the live value and A
+ *   1. evaluate the case once and inspect the live value -> A
  *   2. relationalize with PyretDataInstance and export JSON through Node
- *   3. in the decoder page, reify only that JSON and evaluate `torepr(R)` -> B
+ *   3. reset the decoder and reify only that JSON
+ *   4. load declarations, evaluate `torepr(R)` -> B, and run a Pyret check
  *
  * The decoder gets neither the expression, A, nor any producer caches.
  */
@@ -105,7 +106,15 @@ async function ensureServer(options = {}) {
 }
 
 /** Open the editor and wait until Pyret, the REPL hook and spytial-core are ready. */
-async function openIde(baseUrl) {
+async function openIde(baseUrl, pageCount = 2) {
+  // Integration-only override: replay locally built core assets at the editor's
+  // existing URLs. Production pins and the Pyret runtime are unchanged. Fail
+  // before launch if any asset is missing; never mix local and CDN core copies.
+  const localCore = process.env.SPYTIAL_CORE_DIST ? new Map([
+    'browser/spytial-core-complete.global.js',
+    'components/react-component-integration.global.js',
+    'components/react-component-integration.css',
+  ].map(relative => [relative, fs.readFileSync(path.resolve(process.env.SPYTIAL_CORE_DIST, relative))])) : null;
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: process.env.SHOW_BROWSER ? false : 'new',
@@ -113,10 +122,22 @@ async function openIde(baseUrl) {
       '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
   });
   try {
-    const pages = await Promise.all([browser.newPage(), browser.newPage()]);
+    const pages = await Promise.all(Array.from({ length: pageCount }, () => browser.newPage()));
     // Loading two 40 MB Pyret runtimes concurrently creates substantial
     // compilation/memory pressure. Initialize the pages sequentially.
     for (const page of pages) {
+      if (localCore) {
+        await page.evaluateOnNewDocument(() => { window.__reifyFidelityLocalCore = true; });
+        await page.setRequestInterception(true);
+        page.on('request', request => {
+          const match = /^https:\/\/cdn\.jsdelivr\.net\/npm\/spytial-core@[^/]+\/dist\/([^?]+)(?:\?.*)?$/.exec(request.url());
+          if (match && localCore.has(match[1])) {
+            return request.respond({ status: 200, headers: { 'access-control-allow-origin': '*' },
+              contentType: match[1].endsWith('.css') ? 'text/css' : 'application/javascript', body: localCore.get(match[1]) });
+          }
+          return request.continue();
+        });
+      }
       page.setDefaultTimeout(180000);
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
@@ -156,6 +177,7 @@ function pageRuntime() {
   function failureMessage(rt, res) {
     let e = res && res.exn;
     if (e && e.exn !== undefined) e = e.exn;
+    if (e instanceof Error) return e.name + ': ' + e.message + '\n' + String(e.stack).slice(0, 1000);
     return 'runtime error: ' + String(safeRepr(rt, e)).slice(0, 300);
   }
   // A REPL result is { result: Either, stats }. right(opaque) wraps the
@@ -170,7 +192,7 @@ function pageRuntime() {
       const rt = val.runtime;
       const res = val.result;
       if (!rt.isSuccessResult(res)) return { ok: false, error: failureMessage(rt, res) };
-      return { ok: true, rt, answer: rt.getField(res.result, 'answer') };
+      return { ok: true, rt, answer: rt.getField(res.result, 'answer'), module: res.result };
     }
     if (v && v.val) return { ok: false, error: failureMessage(v.val.runtime, v.val.result) };
     try {
@@ -190,135 +212,96 @@ function pageRuntime() {
     return unwrap(await repl.run(code, 'interactions://reify-fidelity-' + counter));
   }
 
-  // Mirrors relationalize() in spytial-core tests/pyret/oracles.ts: a primitive
-  // at the root gets a single atom, everything else goes through the constructor.
-  function relationalize(v, options) {
-    const t = typeof v;
-    if (t === 'number' || t === 'string' || t === 'boolean') {
-      const type = t === 'number' ? 'Number' : t === 'string' ? 'String' : 'Boolean';
-      const di = new PDI(null, options);
-      di.addAtom({ id: 'prim_' + type + '_' + String(v), type, label: String(v) });
-      return di;
-    }
-    return new PDI(v, options);
-  }
   function datumOf(di) {
     return JSON.parse(JSON.stringify({
       atoms: di.getAtoms(), relations: di.getRelations(), types: di.getTypes(),
     }));
   }
 
-  let constructorFields;
   window.__reifyFidelity = {
-    async init(prelude, fields) {
-      constructorFields = fields;
+    async init(prelude) {
       const u = unwrap(await repl.restartInteractions(prelude, { typeCheck: false, checkAll: false }));
       return u.ok ? { ok: true } : { ok: false, error: u.error };
     },
     coreVersion() {
+      const version = window.spytialcore.version;
+      if (typeof version !== 'string' || version === 'unknown') throw new Error('Core must expose its build version');
+      if (window.__reifyFidelityLocalCore) return version;
       const script = Array.from(document.scripts).map((s) => s.src).find((s) => /spytial-core@/.test(s));
       const m = script && /spytial-core@([^/]+)/.exec(script);
-      return m ? m[1] : 'unknown';
+      if (!m || m[1] !== version) throw new Error('Loaded core version differs from the editor CDN pin');
+      return version;
     },
-    async exportCase(expr, options) {
-      const t0 = performance.now();
-      const row = { expr };
-      const finish = (verdict, error) => {
-        row.verdict = verdict;
-        if (error) row.error = error;
-        row.ms = Math.round(performance.now() - t0);
-        return row;
-      };
-
-      const a = await run('block:\n  v = ' + expr + '\n  {v; torepr(v)}\nend');
-      if (!a.ok) return finish('value-error', a.error);
-      const value = a.answer.vals[0];
-      row.A = a.answer.vals[1];
-
-      try {
-        PDI.clearGlobalConstructorCache();
-        const di = relationalize(value, options || {});
-        row.datum = datumOf(di);
-      } catch (e) {
-        return finish('relationalize-error', String(e).slice(0, 300));
-      } finally {
-        PDI.clearGlobalConstructorCache();
-      }
-      return finish('exported');
-    },
-    async decode(datum) {
+    async exportWorkingCase(expr) {
+      const a = await run(expr);
+      if (!a.ok) return { verdict: 'value-error', error: a.error };
       const row = {};
       try {
-        // The only constructor metadata is fixed before any corpus value is
-        // made. Never copy getGlobalConstructorCache() from the producer.
-        PDI.clearGlobalConstructorCache();
-        Object.entries(constructorFields).forEach(([name, fields]) => {
-          // PDI has no public schema-registration API. Synthetic zero-valued
-          // records register only these fixed field names via its constructor.
-          const dict = {};
-          fields.forEach((field) => { dict[field] = 0; });
-          new PDI({ $name: name, dict });
-        });
-        const fresh = new window.spytialcore.JSONDataInstance(datum, {
-          mergeRelations: false, deduplicateAtoms: false,
-        });
-        // Use the method belonging to the same PDI class as the schema cache.
-        // The editor's component bundle can install another core export copy.
-        // reify reads this fresh JSON instance through getAtoms/getRelations;
-        // there is no PDI containing an original value on this path.
-        row.R = PDI.prototype.reify.call(fresh);
+        row.A = a.rt.toReprJS(a.answer, a.rt.ReprMethods._torepr);
+        if (typeof row.A !== 'string') throw new Error('Reference printer did not return a string');
       } catch (e) {
-        return { verdict: 'decode-error', error: String(e).slice(0, 300) };
+        return { verdict: 'reference-error', error: String(e) };
+      }
+      try {
+        PDI.clearGlobalConstructorCache();
+        // Exactly the constructor invocation in trove/dom-render.js. No
+        // primitive-root adapter, synthetic wrapper or replacement encoding.
+        row.datum = datumOf(new PDI(a.answer, {}, window.__internalRepl));
+        return Object.assign(row, { verdict: 'exported' });
+      } catch (e) {
+        return Object.assign(row, { verdict: 'relationalize-error', error: String(e) });
       } finally {
         PDI.clearGlobalConstructorCache();
       }
-      const b = await run('torepr(' + row.R + ')');
-      if (!b.ok) return Object.assign(row, { verdict: 'reify-eval-error', error: b.error });
-      row.B = b.answer;
-      return Object.assign(row, { verdict: 'decoded' });
+    },
+    reifyWorkingDatum(datum) {
+      try {
+        PDI.clearGlobalConstructorCache();
+        const fresh = new window.spytialcore.JSONDataInstance(datum);
+        if (fresh.getErrors && fresh.getErrors().length) throw new Error(fresh.getErrors().join('; '));
+        const R = PDI.prototype.reify.call(fresh);
+        if (typeof R !== 'string') throw new Error('Reifier did not return an expression string');
+        return { verdict: 'reified', R, received: datumOf(fresh) };
+      } catch (e) {
+        return { verdict: 'reify-error', error: String(e) };
+      } finally {
+        PDI.clearGlobalConstructorCache();
+      }
+    },
+    async inspectExpression(expr) {
+      const b = await run('torepr(' + expr + ')');
+      if (!b.ok) return { verdict: 'reify-eval-error', error: b.error };
+      if (typeof b.answer !== 'string') return { verdict: 'harness-error', error: 'torepr returned a non-string' };
+      return { verdict: 'inspected', B: b.answer };
+    },
+    async checkStrings(expected, actual) {
+      // A and B reach this checker only AFTER datum-only reification and
+      // evaluation. This is input escaping, not a replacement Pyret printer.
+      const literal = s => '"' + s.split('').map(c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')).join('') + '"';
+      const code = 'check "Spytial inspection fidelity":\n  ' + literal(actual)
+        + ' is ' + literal(expected) + '\nend\nnothing';
+      const u = unwrap(await repl.restartInteractions(code, { typeCheck: false, checkAll: true }));
+      if (!u.ok) return { verdict: 'check-error', error: u.error };
+      try {
+        const blocks = u.rt.ffi.toArray(u.rt.getField(u.module, 'checks'));
+        const results = [];
+        let errors = 0;
+        for (const block of blocks) {
+          if (u.rt.getField(block, 'maybe-err').$name !== 'none') errors++;
+          for (const test of u.rt.ffi.toArray(u.rt.getField(block, 'test-results'))) results.push(test.$name);
+        }
+        const check = { blocks: blocks.length, results, errors };
+        if (blocks.length !== 1 || errors || results.length !== 1
+            || !['success', 'failure-not-equal'].includes(results[0])) {
+          return { verdict: 'check-error', error: 'Incomplete or unexpected Pyret check result', check };
+        }
+        return { verdict: results[0] === 'success' ? 'pass' : 'mismatch', check };
+      } catch (e) {
+        return { verdict: 'check-error', error: String(e) };
+      }
     },
   };
   return true;
 }
 
-async function installRunner(ide, prelude, constructorFields) {
-  const versions = [];
-  for (const page of [ide.page, ide.decoder]) {
-    await page.evaluate(pageRuntime);
-    const r = await page.evaluate((p, f) => window.__reifyFidelity.init(p, f), prelude, constructorFields);
-    if (!r.ok) throw new Error(`prelude failed to run: ${r.error}`);
-    versions.push(await page.evaluate(() => window.__reifyFidelity.coreVersion()));
-  }
-  if (versions[0] !== versions[1]) throw new Error('Producer and decoder core versions differ');
-  return versions[0];
-}
-
-/** Run one case; returns { expr, A, R, B, datum, verdict, error, ms }. */
-async function runCase(ide, expr, options) {
-  const start = Date.now();
-  const row = await ide.page.evaluate((e, o) => window.__reifyFidelity.exportCase(e, o), expr, options || {});
-  if (row.verdict !== 'exported') return row;
-  // Only this serialized payload crosses into the decoder's realm.
-  const decoded = await decodeDatum(ide, row.datum);
-  Object.assign(row, decoded);
-  if (row.verdict === 'decoded') row.verdict = row.A === row.B ? 'pass' : 'mismatch';
-  row.ms = Date.now() - start;
-  return row;
-}
-
-function decodeDatum(ide, datum) {
-  return ide.decoder.evaluate((json) => window.__reifyFidelity.decode(JSON.parse(json)), JSON.stringify(datum));
-}
-
-/** One-line-per-path explanation of a row, for assertion messages and reports. */
-function explain(r) {
-  const lines = [`expr: ${r.expr}`];
-  if (r.A !== undefined) lines.push(`A (torepr):          ${r.A}`);
-  if (r.R !== undefined) lines.push(`R (reify):           ${r.R}`);
-  if (r.B !== undefined) lines.push(`B (torepr of eval R): ${r.B}`);
-  if (r.error) lines.push(`error: ${r.error}`);
-  lines.push(`verdict: ${r.verdict}`);
-  return lines.join('\n');
-}
-
-module.exports = { ensureServer, openIde, installRunner, runCase, decodeDatum, explain, findChrome };
+module.exports = { ensureServer, openIde, pageRuntime };
