@@ -132,7 +132,7 @@ tests. These are future requirements, not current support claims.
 To implement one, run the pending mode, fix the
 working core relationalizer/reifier, and change the case from `pending(...)`
 to `supported(...)` once it passes. The exact-round-trip assertion stays the
-same. Promote information-preservation tests from `it.skip` when their gaps are
+same. Enable information-preservation tests unconditionally when their gaps are
 fixed. Use the diagnostic CLI to measure all remaining gaps without changing
 their desired outcomes to match today's implementation.
 

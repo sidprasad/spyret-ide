@@ -219,10 +219,11 @@ reification experiment.
 With the production CDN pins set to 6.0.0 and no local-core override, the
 combined constructor-data and broader reify-fidelity suites check implemented
 behavior and explicitly list pending requirements.
-All **33/33** fixed constructor fixtures match exactly, including poisoned-cache
-replay and a separate graph-rendering smoke test. The broader legacy suite
+All **33/33** fixed constructor fixtures match exactly. The suite also checks
+poisoned-cache replay and graph rendering. The broader legacy suite
 retains executable desired-success tests for missing behavior as pending; its
-green status is not a claim of fidelity for all Pyret values. Seeded release measurements run in PR CI and
+green status is not a claim of fidelity for all Pyret values. Seeded release
+measurements run in PR CI and
 upload their complete reports and served-artifact fingerprints.
 
 ## Pre-release core 6.0.0 verification

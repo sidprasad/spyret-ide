@@ -183,12 +183,15 @@ npm run constructor-data-report
 value carries enough to reproduce `torepr` given fixed type definitions. It
 exports JSON using the pinned spytial-core bundle and reconstructs the string
 in a separate editor page using only that datum and a declared constructor
-schema/prelude. Expected reconstruction failures and actual information-loss
-witnesses are reported separately. See
+schema/prelude. Every in-scope test specifies the desired exact round trip;
+missing behavior and information-preservation requirements are visibly pending,
+not passing tests that require current failures to persist. The diagnostic CLI
+measures all cases and exits nonzero on any gap. See
 [test/reify-fidelity/README.md](test/reify-fidelity/README.md).
 
 ```
 npm run test:reify-fidelity
+REIFY_INCLUDE_PENDING=1 npm run test:reify-fidelity
 npm run reify-fidelity-report
 ```
 
