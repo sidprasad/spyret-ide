@@ -3,7 +3,7 @@
 
 const path = require('path');
 const { fixtures } = require('./corpus');
-const { start, runCase } = require('./harness');
+const { start, runCase } = require('../pyret-round-trip/harness');
 const { writeReport } = require('./report');
 
 async function main() {

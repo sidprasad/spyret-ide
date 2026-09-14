@@ -1,8 +1,9 @@
 # Pyret inspection fidelity
 
-This harness asks whether the existing Pyret importer preserves enough
-information to reproduce `torepr(v)` for a declared corpus, given fixed
-language/type definitions. It measures this decoder:
+This suite asks whether the working Pyret relationalizer preserves enough
+information to reproduce `torepr(v)` for a declared corpus. It uses the same
+[`../pyret-round-trip/harness.js`](../pyret-round-trip/harness.js) as the strict
+constructor suite, not a second adapter or decoder. Both measure:
 
 ```
 producer page: value -> torepr -----------------------------------------> A
@@ -18,32 +19,37 @@ cache from the producer. Every decode creates a fresh `JSONDataInstance`.
 The producer's constructor cache is cleared after export; the decoder's
 cache is reset on every decode.
 
-## Fixed decoder context
+## Datum-only reification; declarations only for evaluation
 
-`PRELUDE` and `CONSTRUCTOR_FIELDS` in `corpus.js` are fixed before testing.
-They declare the available types, constructor field order, and methods.
-Historically the latter supplied the ordering required by core's reification code: for example,
-`node(v, l, r)` must not silently become `node(l, r, v)` through alphabetical
-sorting. No constructor metadata is learned from an individual test value.
-Both the prelude and schema are included in each JSON report. Core 6.0.0 now
-records field order and arity in the datum itself; this legacy context remains
-here for the broader experiment. The stricter `test/constructor-data` harness
-does not seed it.
+Every case starts fresh producer interactions containing `PRELUDE`, then
+evaluates the input expression once. Its live result is passed directly to
+`new PyretDataInstance(value, {}, window.__internalRepl)`, exactly as in the
+working diagram path, including primitive roots.
 
-The harness registers this schema through synthetic zero-valued records,
-then invokes `PyretDataInstance.prototype.reify.call(freshJsonInstance)`.
-Using that class's method keeps the schema cache and reification code in
-the same core bundle instance; the editor's component integration can
-install a second core copy. The method reads the fresh JSON instance's
-atoms and relations, never a `PyretDataInstance` holding the source value.
+The decoder first resets its interactions to `nothing`. With constructor
+caches cleared, it normalizes the serialized datum using
+`new JSONDataInstance(datum)` with **default options**, then invokes
+`PyretDataInstance.prototype.reify.call(freshJsonInstance)`. This selects the
+same core class whose cache was cleared; the editor can load two core copies.
 
-The precise property is `decode(import(v), context) === torepr(v)` for the
-tested subset and this fixed context. Reusing a type's `_output` method in
-the decoder is permitted by that context; its code is not recovered from
-the datum. Bare constructor names must be unambiguous and bound in the
-prelude. Locally defined constructors, name collisions across modules,
-closures capturing per-value state, and effectful or nondeterministic
-`_output` methods are outside the supported subset.
+Only **after** that method has returned an expression does the decoder load
+`PRELUDE`, evaluate the expression and obtain its `torepr` string. An actual
+Pyret `check` must contain exactly one successful `B is A` result; JavaScript
+string equality cross-checks it. The shared harness also records failures of
+initialization, export, normalization/reification, evaluation, and checking.
+
+There is no constructor-field schema, synthetic registration, primitive
+wrapper, or alternative normalization mode. Constructor order and arity must
+travel with the datum. Unit tests guard those boundaries; browser regressions
+poison caches, reorder relations, and replay a datum after evaluating a
+same-named constructor with a different field order.
+
+`PRELUDE` supplies language/type definitions for evaluation, not metadata to
+the reifier. Reusing a type's deterministic `_output` method there is permitted;
+its code is not recovered from the datum. Bare constructor names must be
+unambiguous and bound in the evaluation prelude. Locally scoped constructors,
+name collisions across modules, closures capturing per-value state, and
+effectful or nondeterministic `_output` methods remain outside the supported subset.
 
 The importer currently consumes raw runtime fields (`dict`, `brands`,
 `$name`), **not value skeletons**. Pyret consults `_output` skeletons when
@@ -52,10 +58,10 @@ does not establish fidelity for a future value-skeleton-based importer.
 The reference output is specifically `torepr`, not every graphical REPL
 renderer or the distinct command-line `$cli` renderer.
 
-Primitive roots use the single-atom adapter also used by core's Pyret
-oracles/`fromExpression`; core 6.0.0 also accepts primitive roots directly.
-This older harness still uses the adapter, so its primitive results describe that
-adapter, not an end-to-end `genlayout` test.
+The two suites now differ in their **corpora**, not their transport or decoder:
+`constructor-data` samples the narrowly specified constructor domain, while
+this suite includes built-in collections, custom printing, and pending forms.
+Neither round-trip suite is an end-to-end test of the graphical renderer.
 
 ## Running
 
@@ -85,10 +91,18 @@ server unless `BASE_URL` is supplied or an editor is already running on
 
 The CLI also accepts `--out`, `--fuzz`, `--seed`, and `--quiet`. Mocha shrinks
 failing generated examples; the CLI samples without shrinking. Reports
-retain exported data, A/R/B strings, actual failure stages, desired outcomes,
-decoder context, seed, and core version. A partial or empty run cannot report
+retain exported and normalized data, A/R/B strings, actual Pyret check results,
+failure stages, desired outcomes, evaluation declarations, seed, and core version.
+Both include `protocol: "spyret-datum-only-v1"` and fingerprints of the actual
+served Pyret/core artifacts. `evaluationContext` replaces the old `decoderContext`
+report field: no constructor schema is supplied. A partial or empty run cannot report
 full fidelity. The CLI runs pending cases too and exits 1 for any gap; it does
 not turn a previously observed failure into a passing test.
+
+The PR workflow runs the enabled corpus and 100 generated broad values in each
+job, with `REIFY_SEED` set to the job's seed (1 or 2), alongside the constructor
+suite. Shared harness contract tests run before the Pyret build. Reports and logs,
+including the list of pending requirements, are uploaded with each job's artifacts.
 
 ## What counts as evidence
 
@@ -126,6 +140,7 @@ reorders relation records before replaying an exported `node` datum.
 
 With released core 6.0.0, 38 corpus rows and 100 generated values are enabled
 and must round-trip, including zero-argument constructor applications (`zero()`).
+All of these have been re-verified through the shared datum-only harness.
 There are 27 pending value cases plus two pending information-preservation
 tests. These are future requirements, not current support claims.
 
@@ -141,6 +156,11 @@ five explicit reifier rejections. Those are observations of remaining work,
 not expected-success assertions or acceptable end states.
 
 ## Historical boundary on spytial-core 4.4.3
+
+These older measurements used a primitive-root adapter, a fixed
+`CONSTRUCTOR_FIELDS` schema seeded into the decoder cache, and non-default JSON
+normalization. That implementation has been removed. The results below describe
+the old experiment and must not be presented as evidence for the current protocol.
 
 37 supported corpus rows cover small integers, strings, booleans, the
 declared data variants and deterministic `_output` methods, option/either,

@@ -12,9 +12,11 @@
  *   value -- torepr ------------------------------------------------> string
  *   value -- PyretDataInstance -> JSON -> isolated decoder -------> string
  *
- * The decoder receives JSON in a separate page and uses core's reification
- * with the fixed CONSTRUCTOR_FIELDS schema and PRELUDE below. The schema and
- * methods are decoder context, never metadata learned from a tested value.
+ * Both suites use ../pyret-round-trip/harness: the live value goes directly
+ * through the working relationalizer, then default JSON normalization and
+ * cache-independent reification in a separate page. PRELUDE is loaded only
+ * AFTER reification, to evaluate the completed expression. No field schema,
+ * primitive adapter, original value or inspection string reaches the reifier.
  *
  * Every in-scope row has the same desired outcome: exact inspection fidelity.
  * Implementation status controls only when its assertion runs in normal CI:
@@ -55,18 +57,6 @@ data Shown: shown(a, b) with:
   method _output(self): VS.vs-constr("shown", [list: VS.vs-value(self.b), VS.vs-value(self.a)]) end
 end
 `;
-
-// Fixed type definitions available to the decoder, independent of the input.
-// Retained legacy context: v6 PyretDataInstance now exports field order itself.
-// Lists, option, and either match the bundled Pyret libraries; the other entries
-// match PRELUDE above.
-const CONSTRUCTOR_FIELDS = {
-  point: ['x', 'y'], node: ['v', 'l', 'r'], leaf: [],
-  pair: ['fst', 'snd'], box: ['v'], zero: [], cell: ['next'],
-  wm: ['n'], sh: ['a'], custom: ['a'], shown: ['a', 'b'],
-  some: ['value'], none: [], left: ['v'], right: ['v'],
-  link: ['first', 'rest'], empty: [],
-};
 
 function row(category, name, expr, expect, note) {
   return { category, name, expr, expect, desiredVerdict: 'pass', note };
@@ -233,4 +223,4 @@ function arbitraries(fc) {
   return { value };
 }
 
-module.exports = { PRELUDE, CONSTRUCTOR_FIELDS, ROWS, arbitraries };
+module.exports = { PRELUDE, ROWS, arbitraries };

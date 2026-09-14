@@ -4,6 +4,9 @@ This experiment tests the **working relationalizer and reifier** against the
 particular Pyret runtime loaded by Spyret's editor. It does not introduce a
 replacement relationalizer, a new relational encoding, or a direct string
 decoder. The previous experimental constructor-data adapter has been removed.
+Both this suite and the broader `reify-fidelity` suite now use the same
+[`../pyret-round-trip/harness.js`](../pyret-round-trip/harness.js). Their corpora
+differ; their production calls, JSON normalization, and isolation rules do not.
 
 ## The property under test
 
@@ -209,10 +212,10 @@ the constructor function `zero`, recursive tree arguments moving to the wrong
 positions, and primitive-root failures (`true` throws; `0` becomes `nothing`).
 Core 6.0.0 fixes these in the working pair, without repairing metadata in tests.
 
-The older `test/reify-fidelity` experiment remains available. It supplies fixed
-constructor-field metadata and adapts primitive roots, so its higher match
-count answers a different question and is not comparable to this datum-only
-reification experiment.
+The historical `test/reify-fidelity` experiment supplied fixed constructor-field
+metadata and adapted primitive roots, so its older match count answered a
+different question. That path has now been removed; both current suites use
+the shared datum-only harness.
 
 ## Released core 6.0.0 verification
 
@@ -220,7 +223,7 @@ With the production CDN pins set to 6.0.0 and no local-core override, the
 combined constructor-data and broader reify-fidelity suites check implemented
 behavior and explicitly list pending requirements.
 All **33/33** fixed constructor fixtures match exactly. The suite also checks
-poisoned-cache replay and graph rendering. The broader legacy suite
+poisoned-cache replay and graph rendering. The broader suite, on that same harness,
 retains executable desired-success tests for missing behavior as pending; its
 green status is not a claim of fidelity for all Pyret values. Seeded release
 measurements run in PR CI and

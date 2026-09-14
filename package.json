@@ -80,10 +80,10 @@
     "heroku-postbuild": "bash src/scripts/fetch-anchor.sh",
     "mocha": "heroku local:run mocha",
     "start": "heroku local:run supervisor --poll-interval 700 --watch src/run.js,src/server.js src/run.js",
-    "test:reify-fidelity": "mocha test/reify-fidelity/*.test.js",
+    "test:reify-fidelity": "mocha test/pyret-round-trip/*.test.js test/reify-fidelity/*.test.js",
     "reify-fidelity-report": "node test/reify-fidelity/cli.js",
-    "test:constructor-data": "mocha test/constructor-data/*.test.js",
-    "test:constructor-data:unit": "mocha test/constructor-data/report.test.js",
+    "test:constructor-data": "mocha test/pyret-round-trip/*.test.js test/constructor-data/*.test.js",
+    "test:constructor-data:unit": "mocha test/pyret-round-trip/*.test.js test/constructor-data/report.test.js test/reify-fidelity/report.test.js",
     "constructor-data-report": "node test/constructor-data/cli.js"
   },
   "repository": {

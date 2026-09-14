@@ -83,7 +83,8 @@ jobs:
         env:
           CONSTRUCTOR_REPORT: build/constructor-data-ci/regression-report.json
           REIFY_REPORT: build/constructor-data-ci/desired-behavior-report.json
-        run: npx --no-install mocha 'test/constructor-data/*.test.js' 'test/reify-fidelity/*.test.js' | tee build/constructor-data-ci/regression.log
+          REIFY_SEED: ${{ matrix.seed }}
+        run: npx --no-install mocha 'test/pyret-round-trip/*.test.js' 'test/constructor-data/*.test.js' 'test/reify-fidelity/*.test.js' | tee build/constructor-data-ci/regression.log
 
       - name: Require exact real-Pyret inspection round trips
         timeout-minutes: 15

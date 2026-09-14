@@ -54,4 +54,11 @@ describe('Desired fidelity report validity', function () {
     assert.strictEqual(summarize([supported], { pendingCases: ['unknown'] }).requiredChecksHold, false);
     assert.strictEqual(summarize([{ source: 'generated', verdict: 'mismatch' }], { numRuns: 1 }).fidelityHolds, false);
   });
+
+  it('does not report success after an isolation or orchestration failure', function () {
+    const summary = summarize([supported], { runErrors: ['cache isolation failed'] });
+    assert.strictEqual(summary.requiredChecksHold, false);
+    assert.strictEqual(summary.fidelityHolds, false);
+    assert.deepStrictEqual(summary.runErrors, ['cache isolation failed']);
+  });
 });

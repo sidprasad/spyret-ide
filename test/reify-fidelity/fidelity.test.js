@@ -21,8 +21,8 @@
 const assert = require('assert');
 const path = require('path');
 const fc = require('fast-check');
-const { PRELUDE, CONSTRUCTOR_FIELDS, ROWS, arbitraries } = require('./corpus');
-const { ensureServer, openIde, installRunner, runCase, decodeDatum, explain } = require('./harness');
+const { PRELUDE, ROWS, arbitraries } = require('./corpus');
+const { start, runCase, replayDatum, explain } = require('../pyret-round-trip/harness');
 const { format, writeReport } = require('./report');
 
 const REPORT = process.env.REIFY_REPORT || path.resolve(__dirname, '..', '..', 'build', 'reify-fidelity-report.json');
@@ -33,36 +33,40 @@ if (!Number.isInteger(NUM_RUNS) || NUM_RUNS < 1 || !Number.isInteger(SEED)) {
   throw new Error('REIFY_FUZZ_RUNS must be positive and REIFY_SEED must be an integer');
 }
 
-describe('Pyret inspection fidelity: torepr(v) == decode(JSON datum, fixed context)', function () {
+describe('Pyret inspection fidelity: working datum-only round trips', function () {
   this.timeout(30 * 60 * 1000);
 
-  const rows = [];
-  let server;
-  let ide;
-  let coreVersion;
+  const rows = [], errors = [];
+  let session;
+
+  const fixture = (expr, id) => ({ id, expr, prelude: PRELUDE });
 
   before(async function () {
-    server = await ensureServer();
-    ide = await openIde(server.baseUrl);
-    coreVersion = await installRunner(ide, PRELUDE, CONSTRUCTOR_FIELDS);
+    try {
+      session = await start();
+      assert.strictEqual(session.metadata.coreVersion, '6.0.0', 'Re-measure after a core upgrade');
+    } catch (e) { errors.push(String(e)); throw e; }
+  });
+
+  afterEach(function () {
+    if (this.currentTest.state === 'failed') errors.push(this.currentTest.title);
   });
 
   after(async function () {
     try {
       const meta = {
-        baseUrl: server && server.baseUrl, coreVersion, seed: SEED, numRuns: NUM_RUNS,
+        ...session && session.metadata, seed: SEED, numRuns: NUM_RUNS, runErrors: errors,
         expectedCases: ROWS.filter((r) => r.expect !== 'out-of-scope').map((r) => `${r.category}/${r.name}`),
         pendingCases: INCLUDE_PENDING ? [] : ROWS.filter(r => r.expect === 'pending').map(r => `${r.category}/${r.name}`),
         desiredCases: ROWS.filter(r => r.expect !== 'out-of-scope'),
-        decoderContext: { prelude: PRELUDE, constructorFields: CONSTRUCTOR_FIELDS },
+        evaluationContext: { prelude: PRELUDE, loadedAfterReification: true },
       };
       const report = writeReport(REPORT, rows, meta);
       // eslint-disable-next-line no-console
       console.log('\n' + format(report.summary, meta) + `\n  report: ${REPORT}\n`);
       assert.ok(report.summary.requiredChecksHold, format(report.summary, meta));
     } finally {
-      try { if (ide) await ide.browser.close(); }
-      finally { if (server) server.stop(); }
+      if (session) await session.close();
     }
   });
 
@@ -78,11 +82,12 @@ describe('Pyret inspection fidelity: torepr(v) == decode(JSON datum, fixed conte
         const r = Object.assign(
           { source: 'corpus', category: row.category, name: row.name, expect: row.expect,
             desiredVerdict: row.desiredVerdict, note: row.note },
-          await runCase(ide, row.expr, row.options),
+          await runCase(session, fixture(row.expr, `${row.category}/${row.name}`)),
         );
         rows.push(r);
         assert.strictEqual(r.verdict, 'pass', explain(r));
         assert.strictEqual(r.B, r.A);
+        assert.deepStrictEqual(r.check, { blocks: 1, results: ['success'], errors: 0 });
       });
     }
   });
@@ -92,7 +97,7 @@ describe('Pyret inspection fidelity: torepr(v) == decode(JSON datum, fixed conte
       const { value } = arbitraries(fc);
       await fc.assert(
         fc.asyncProperty(value, async (expr) => {
-          const r = Object.assign({ source: 'generated', category: 'value' }, await runCase(ide, expr));
+          const r = Object.assign({ source: 'generated', category: 'value' }, await runCase(session, fixture(expr)));
           rows.push(r);
           if (r.verdict !== 'pass') throw new Error(explain(r));
         }),
@@ -102,16 +107,32 @@ describe('Pyret inspection fidelity: torepr(v) == decode(JSON datum, fixed conte
   });
 
   describe('datum isolation and desired information preservation', function () {
+    it('replays an earlier datum after a same-named constructor changes field order', async function () {
+      const first = { id: 'first-schema', prelude: 'data First: replay-pair(zebra, alpha) end', expr: 'replay-pair(9, 2)' };
+      const second = { id: 'second-schema', prelude: 'data Second: replay-pair(alpha, zebra) end', expr: 'replay-pair(4, 7)' };
+      const a = await runCase(session, first);
+      const b = await runCase(session, second);
+      assert.strictEqual(a.verdict, 'pass', explain(a));
+      assert.strictEqual(b.verdict, 'pass', explain(b));
+      const payload = JSON.parse(JSON.stringify(a.datum));
+      payload.relations.reverse();
+      const replay = await replayDatum(session, payload, first.prelude);
+      assert.strictEqual(replay.verdict, 'inspected', explain(replay));
+      assert.strictEqual(replay.R, 'replay-pair(9, 2)');
+      assert.strictEqual(replay.B, a.A);
+    });
+
     it('decodes JSON independently of import caches and relation enumeration', async function () {
-      const r = await runCase(ide, 'node(1, leaf, leaf)');
+      const r = await runCase(session, fixture('node(1, leaf, leaf)'));
       assert.strictEqual(r.verdict, 'pass', explain(r));
       const payload = JSON.parse(JSON.stringify(r.datum));
       payload.relations.reverse();
-      await ide.decoder.evaluate(() => {
+      await session.ide.decoder.evaluate(() => {
         const PDI = window.spytialcore.PyretDataInstance;
         new PDI({ $name: 'node', dict: { l: 0, r: 0, v: 0 } });
       });
-      const again = await decodeDatum(ide, payload);
+      const again = await replayDatum(session, payload, PRELUDE);
+      assert.strictEqual(again.verdict, 'inspected', explain(again));
       assert.strictEqual(again.B, r.A);
       assert.strictEqual(again.R, 'node(1, leaf, leaf)');
     });
@@ -119,8 +140,8 @@ describe('Pyret inspection fidelity: torepr(v) == decode(JSON datum, fixed conte
     for (const [left, right] of [['nothing', '{}'], ['box([raw-array: 1])', 'box([raw-array: 1, 1])']]) {
       const check = INCLUDE_PENDING ? it : it.skip;
       check(`TODO: preserves the distinction between ${left} and ${right}`, async function () {
-        const a = await runCase(ide, left);
-        const b = await runCase(ide, right);
+        const a = await runCase(session, fixture(left));
+        const b = await runCase(session, fixture(right));
         assert.ok(a.datum && b.datum, `${explain(a)}\n${explain(b)}`);
         assert.strictEqual(typeof a.A, 'string');
         assert.strictEqual(typeof b.A, 'string');

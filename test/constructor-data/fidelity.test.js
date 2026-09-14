@@ -3,7 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const { fixtures } = require('./corpus');
-const { start, runCase } = require('./harness');
+const { start, runCase } = require('../pyret-round-trip/harness');
 const { writeReport } = require('./report');
 
 describe('Spyret working relationalizer/reifier: released 6.0.0', function () {

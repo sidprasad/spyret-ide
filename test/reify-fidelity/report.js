@@ -46,7 +46,8 @@ function summarize(rows, meta = {}) {
   const requiredMissingCases = missingCases.filter(key => !pending.has(key));
   const unexpectedCases = [...actualCases].filter(key => !expected.has(key));
   const validManifest = expected.size === expectedCases.length && [...pending].every(key => expected.has(key));
-  const validRun = rows.length > 0 && validManifest && actualCases.size === corpus.length
+  const runErrors = meta.runErrors || [];
+  const validRun = !runErrors.length && rows.length > 0 && validManifest && actualCases.size === corpus.length
     && !unexpectedCases.length && (meta.numRuns === undefined || generated.length >= meta.numRuns);
   const complete = validRun && missingCases.length === 0;
   const requiredComplete = validRun && requiredMissingCases.length === 0;
@@ -64,6 +65,7 @@ function summarize(rows, meta = {}) {
     pendingCases,
     requiredMissingCases,
     unexpectedCases,
+    runErrors,
     requiredChecksHold: requiredComplete && rows.every(r => !isViolation(r)),
     fidelityHolds: complete && rows.every(r => !isViolation(r)),
   };
@@ -75,7 +77,7 @@ function pct(x) {
 
 function format(summary, meta = {}) {
   const lines = [];
-  lines.push('=== Pyret fidelity: torepr(v) vs decode(JSON datum, fixed context) ===');
+  lines.push('=== Pyret fidelity: working datum-only round trips ===');
   if (meta.baseUrl) lines.push(`  IDE: ${meta.baseUrl}   spytial-core: ${meta.coreVersion || '?'}`);
   for (const s of summary.scores) {
     lines.push(`  ${s.group.padEnd(20)} ${s.category.padEnd(14)} ${String(s.pass).padStart(3)}/${String(s.total).padEnd(3)} ${pct(s.rate)}`);
@@ -84,6 +86,7 @@ function format(summary, meta = {}) {
   lines.push(`  supported rows passing:    ${pct(summary.supportedPassRate)}`);
   lines.push(`  generated values passing:  ${pct(summary.generatedPassRate)}  (${summary.counts.generated} values)`);
   lines.push(`  verdicts: ${JSON.stringify(summary.counts.verdicts)}`);
+  for (const error of summary.runErrors) lines.push(`  RUN ERROR: ${error}`);
   if (summary.pendingCases.length) lines.push(`  PENDING desired behaviors (${summary.pendingCases.length}): ${summary.pendingCases.join(', ')}`);
   lines.push(`  full desired corpus satisfied: ${summary.fidelityHolds}`);
   if (!summary.complete) lines.push(`  INCOMPLETE MEASUREMENT; unmeasured cases: ${summary.missingCases.join(', ') || '(check manifest/generated count)'}`);
