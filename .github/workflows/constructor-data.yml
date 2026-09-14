@@ -16,7 +16,7 @@ concurrency:
 env:
   # Core PR #591: immutable candidate pin, not the IDE's production CDN pin.
   # Update deliberately when adopting a newer core implementation.
-  SPYTIAL_CORE_REF: 5299ce24bb887c82c727418984d2a2d6335a33d3
+  SPYTIAL_CORE_REF: fc44bf63fea5638ce0bdcf1605457e936b4fa1e7
 
 jobs:
   round-trip:
@@ -39,13 +39,13 @@ jobs:
         working-directory: ide
     steps:
       - name: Check out IDE
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ide
           persist-credentials: false
 
       - name: Check out pinned core source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: sidprasad/spytial-core
           ref: ${{ env.SPYTIAL_CORE_REF }}
@@ -53,7 +53,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22.22.2
           cache: npm
@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload report and provenance, including failures
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: constructor-data-seed-${{ matrix.seed }}
           path: ide/build/constructor-data-ci/
