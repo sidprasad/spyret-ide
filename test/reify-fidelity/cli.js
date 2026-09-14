@@ -7,7 +7,8 @@
  *
  *   node test/reify-fidelity/cli.js [--out FILE] [--fuzz N] [--seed S] [--quiet]
  *
- * Exit code 1 if the documented boundary does not hold. Generated values are
+ * Runs pending cases too. Exit code 1 for ANY failure of exact fidelity.
+ * Known gaps are measurements, never successful expected failures. Values are
  * sampled (no shrinking) so that the report is a fixed, reproducible table;
  * use the mocha suite to shrink a failing case.
  */
@@ -42,7 +43,7 @@ async function main() {
       if (row.expect === 'out-of-scope') continue;
       const r = Object.assign(
         { source: 'corpus', category: row.category, name: row.name, expect: row.expect,
-          failure: row.failure, failureMessage: row.failureMessage, note: row.note },
+          desiredVerdict: row.desiredVerdict, note: row.note },
         await runCase(ide, row.expr, row.options),
       );
       rows.push(r);
@@ -61,7 +62,7 @@ async function main() {
     };
     const report = writeReport(out, rows, meta);
     console.log('\n' + format(report.summary, meta) + `\n  report: ${out}`);
-    process.exitCode = report.summary.boundaryHolds ? 0 : 1;
+    process.exitCode = report.summary.fidelityHolds ? 0 : 1;
   } finally {
     try { if (ide) await ide.browser.close(); }
     finally { server.stop(); }

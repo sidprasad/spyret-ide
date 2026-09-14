@@ -61,6 +61,9 @@ adapter, not an end-to-end `genlayout` test.
 
 ```bash
 npm run test:reify-fidelity
+# Run the executable pending specifications while implementing missing support
+REIFY_INCLUDE_PENDING=1 npm run test:reify-fidelity
+# Measure every case, including pending ones; any fidelity gap exits nonzero
 npm run reify-fidelity-report
 ```
 
@@ -78,12 +81,14 @@ server unless `BASE_URL` is supplied or an editor is already running on
 | `REIFY_FUZZ_RUNS` | Positive number of generated tests (default 100) |
 | `REIFY_SEED` | Integer fast-check seed (default 1) |
 | `REIFY_REPORT` | JSON report path (default `build/reify-fidelity-report.json`) |
+| `REIFY_INCLUDE_PENDING` | Set to `1` to execute pending desired-behavior tests (Mocha) |
 
 The CLI also accepts `--out`, `--fuzz`, `--seed`, and `--quiet`. Mocha shrinks
 failing generated examples; the CLI samples without shrinking. Reports
-retain all exported data, A/R/B strings, exact expected failure stages,
-decoder context, seed, and core version. A partial or empty run cannot
-report that the expected boundary holds.
+retain exported data, A/R/B strings, actual failure stages, desired outcomes,
+decoder context, seed, and core version. A partial or empty run cannot report
+full fidelity. The CLI runs pending cases too and exits 1 for any gap; it does
+not turn a previously observed failure into a passing test.
 
 ## What counts as evidence
 
@@ -93,42 +98,47 @@ multiplicity. They are representative examples, not exhaustive coverage
 of all values or every printer dispatch. The generator searches recursive
 combinations of the declared supported forms.
 
-- `supported`: exact equality of A and B is required.
-- `unsupported`: the declared `mismatch` or `reify-eval-error` is required.
-  An explicitly declared `reify-error` requires the exact recorded rejection
-  message. Unexpected success, a different stage, or a different rejection
-  message fails the suite.
-- `value-error`, `relationalize-error`, and `decode-error` always fail the
-  evaluation; they cannot be treated as expected unsupported behavior.
+- Every in-scope case has `desiredVerdict: 'pass'`: exact equality of A and B.
+- `supported` marks enabled regression tests for implemented behavior.
+- `pending` marks executable specifications for missing behavior, skipped in
+  normal CI and displayed as TODOs. Their test bodies assert success, not an
+  expected mismatch or exception. Set `REIFY_INCLUDE_PENDING=1` to run them.
+- Errors and mismatches always count as gaps when measured. A pending case
+  beginning to round-trip is progress, never a failure of the specification.
 
-The aggregate assertion runs after the corpus and generated suites, checks
-their completeness, and reports the actual fidelity rates. A green test
-suite means the expected successes and failures were observed; it does not
-mean that every corpus value round-tripped.
+The aggregate assertion checks completeness and success of enabled tests.
+Reports distinguish `requiredChecksHold` from `fidelityHolds`: green enabled
+checks do not imply that the full desired corpus is satisfied. Pending case
+IDs and their desired expressions remain in the report manifest. Missing
+enabled cases still fail; skipped pending cases never count as verified passes.
 
 A reconstruction failure alone does not prove that information is missing:
-another decoder could succeed. The suite additionally tests two actual
-information-loss witnesses: `nothing` versus `{}`, and
-`box([raw-array: 1])` versus `box([raw-array: 1, 1])`. Each pair exports
-identical JSON data but has distinct `torepr` strings. No decoder receiving
-only that datum and the same fixed context can distinguish the pair.
+another decoder could succeed. Two additional pending tests require preserving
+the distinction between `nothing` and `{}`, and between
+`box([raw-array: 1])` and `box([raw-array: 1, 1])`. These pairs currently collide
+in exported data despite distinct `torepr` strings. Their assertions require
+distinguishable data and successful round trips; they do not bless the collision.
 
 An isolation regression also poisons the decoder's constructor cache and
 reorders relation records before replaying an exported `node` datum.
 
-## Released spytial-core 6.0.0 boundary
+## Building toward the desired behavior
 
-The updated corpus requires 38 supported rows to round-trip, including
-zero-argument constructor applications (`zero()`). The 27 unsupported rows
-remain outside the fidelity claim: 20 fail expression evaluation, two produce
-different inspection strings, and five are rejected by the reifier.
+With released core 6.0.0, 38 corpus rows and 100 generated values are enabled
+and must round-trip, including zero-argument constructor applications (`zero()`).
+There are 27 pending value cases plus two pending information-preservation
+tests. These are future requirements, not current support claims.
 
-The five rejections are rough-number and big-integer fields, a two-element
-raw-array field, a reference field, and a reference cycle. Core detects missing
-constructor positions or multiple values in one position instead of emitting
-an incorrect expression. Tests assert the exact rejection messages, separately
-from JSON/cache setup failures, which are always harness failures. The two
-information-loss witnesses above are retained.
+To implement one, run the pending mode, fix the
+working core relationalizer/reifier, and change the case from `pending(...)`
+to `supported(...)` once it passes. The exact-round-trip assertion stays the
+same. Promote information-preservation tests from `it.skip` when their gaps are
+fixed. Use the diagnostic CLI to measure all remaining gaps without changing
+their desired outcomes to match today's implementation.
+
+The current full measurement has 20 evaluation errors, two mismatches, and
+five explicit reifier rejections. Those are observations of remaining work,
+not expected-success assertions or acceptable end states.
 
 ## Historical boundary on spytial-core 4.4.3
 

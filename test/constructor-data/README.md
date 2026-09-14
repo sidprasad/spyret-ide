@@ -166,8 +166,9 @@ from the editor's production CDN URLs. There is no core source checkout,
 local build, or `SPYTIAL_CORE_DIST` override in CI. The fixed regression suite
 also runs, including poisoned-cache and graph-rendering checks; a unit test
 keeps all three asset pins aligned with the tested release. The older broader
-suite checks its separately documented success/rejection boundary, not a claim
-of fidelity for all Pyret value forms.
+suite runs implemented desired-behavior tests and visibly lists pending
+requirements for the remaining Pyret forms. It never counts a known failure
+as a passing assertion.
 
 Jobs use Node 22.22.2 and the Ubuntu 24.04 runner's installed Chrome. Each job
 uploads a `constructor-data-seed-N` artifact for 14 days, including the JSON
@@ -216,11 +217,12 @@ reification experiment.
 ## Released core 6.0.0 verification
 
 With the production CDN pins set to 6.0.0 and no local-core override, the
-combined constructor-data and older reify-fidelity suites pass **118 tests**.
+combined constructor-data and broader reify-fidelity suites check implemented
+behavior and explicitly list pending requirements.
 All **33/33** fixed constructor fixtures match exactly, including poisoned-cache
 replay and a separate graph-rendering smoke test. The broader legacy suite
-retains its explicitly unsupported cases; its green status is not a claim of
-fidelity for all Pyret values. Seeded release measurements run in PR CI and
+retains executable desired-success tests for missing behavior as pending; its
+green status is not a claim of fidelity for all Pyret values. Seeded release measurements run in PR CI and
 upload their complete reports and served-artifact fingerprints.
 
 ## Pre-release core 6.0.0 verification

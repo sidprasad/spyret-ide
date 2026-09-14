@@ -82,7 +82,7 @@ jobs:
         timeout-minutes: 10
         env:
           CONSTRUCTOR_REPORT: build/constructor-data-ci/regression-report.json
-          REIFY_REPORT: build/constructor-data-ci/legacy-boundary-report.json
+          REIFY_REPORT: build/constructor-data-ci/desired-behavior-report.json
         run: npx --no-install mocha 'test/constructor-data/*.test.js' 'test/reify-fidelity/*.test.js' | tee build/constructor-data-ci/regression.log
 
       - name: Require exact real-Pyret inspection round trips

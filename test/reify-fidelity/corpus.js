@@ -16,14 +16,13 @@
  * with the fixed CONSTRUCTOR_FIELDS schema and PRELUDE below. The schema and
  * methods are decoder context, never metadata learned from a tested value.
  *
- * Every row is classified by its expected verdict, so the suite documents the
- * tested boundary of this importer/decoder pair:
+ * Every in-scope row has the same desired outcome: exact inspection fidelity.
+ * Implementation status controls only when its assertion runs in normal CI:
  *
- *   supported    -- the reconstructed string equals torepr(value); must pass.
- *   unsupported  -- torepr is deterministic, but the datum (or reify) does not
- *                   reproduce it. Strict: if such a row starts passing, the
- *                   suite fails and the row must be promoted.
- *   out-of-scope -- torepr is not a function of the value alone; skipped.
+ *   supported    -- enabled regression; must round-trip exactly.
+ *   pending      -- executable desired-behavior test for a known gap. Run with
+ *                   REIFY_INCLUDE_PENDING=1 while implementing support.
+ *   out-of-scope -- torepr is not a function of the value alone; not a promise.
  *
  * Scope: reify prints constructors by their bare variant name ($name carries no
  * module), so the prelude that evaluates the reify string must bind the
@@ -70,13 +69,10 @@ const CONSTRUCTOR_FIELDS = {
 };
 
 function row(category, name, expr, expect, note) {
-  return { category, name, expr, expect, note };
+  return { category, name, expr, expect, desiredVerdict: 'pass', note };
 }
 const supported = (category, name, expr, note) => row(category, name, expr, 'supported', note);
-const unsupported = (category, name, expr, note, failure = 'reify-eval-error') =>
-  Object.assign(row(category, name, expr, 'unsupported', note), { failure });
-const rejected = (category, name, expr, note, message = 'Incomplete Pyret constructor fields') =>
-  Object.assign(unsupported(category, name, expr, note, 'reify-error'), { failureMessage: 'Error: ' + message });
+const pending = (category, name, expr, note) => row(category, name, expr, 'pending', note);
 
 /**
  * Representative rows keyed to the runtime's `torepr` dispatch
@@ -89,17 +85,17 @@ const ROWS = [
   supported('number', 'negative', '-4'),
   supported('number', 'zero', '0'),
   supported('number', 'fixnum-field', 'box(5)'),
-  unsupported('number', 'rational', '1/3',
+  pending('number', 'rational', '1/3',
     'a jsnums Rational at the root is neither a JS primitive nor a Pyret object; it becomes an empty PyretObject atom'),
-  unsupported('number', 'rational-field', 'box(1/3)',
-    'the relationalizer turns {n, d} into the decimal n/d, which Pyret reads back as 3333333333333333/10000000000000000', 'mismatch'),
-  unsupported('number', 'decimal-literal', '0.5',
+  pending('number', 'rational-field', 'box(1/3)',
+    'the relationalizer turns {n, d} into the decimal n/d, which Pyret reads back as 3333333333333333/10000000000000000'),
+  pending('number', 'decimal-literal', '0.5',
     'Pyret reads 0.5 as the exact rational 1/2 (see rational)'),
-  unsupported('number', 'roughnum', '~3.14', 'Roughnum root (see rational)'),
-  rejected('number', 'roughnum-field', 'box(~1.5)',
+  pending('number', 'roughnum', '~3.14', 'Roughnum root (see rational)'),
+  pending('number', 'roughnum-field', 'box(~1.5)',
     'the Roughnum field is dropped; v6 rejects the incomplete constructor datum'),
-  unsupported('number', 'bignum', '123456789012345678901234567890', 'BigInteger root (see rational)'),
-  rejected('number', 'bignum-field', 'box(123456789012345678901234567890)',
+  pending('number', 'bignum', '123456789012345678901234567890', 'BigInteger root (see rational)'),
+  pending('number', 'bignum-field', 'box(123456789012345678901234567890)',
     'the BigInteger field is dropped; v6 rejects the incomplete constructor datum'),
 
   // -- strings ---------------------------------------------------------------
@@ -116,9 +112,9 @@ const ROWS = [
   supported('boolean', 'true', 'true'),
   supported('boolean', 'false', 'false'),
   supported('boolean', 'field', 'box(false)'),
-  unsupported('nothing', 'root', 'nothing',
+  pending('nothing', 'root', 'nothing',
     'nothing is a PObject with an empty dict and no brands: the datum cannot tell it from {}'),
-  unsupported('nothing', 'field', 'box(nothing)', 'see nothing root'),
+  pending('nothing', 'field', 'box(nothing)', 'see nothing root'),
 
   // -- user data variants ----------------------------------------------------
   supported('data', 'singleton', 'leaf'),
@@ -147,50 +143,49 @@ const ROWS = [
   supported('builtin-data', 'list-field', 'box([list: 1, 1])'),
 
   // -- plain objects ---------------------------------------------------------
-  unsupported('object', 'flat', '{x: 1, y: 2}',
+  pending('object', 'flat', '{x: 1, y: 2}',
     'the datum holds the x and y relations, but reify prints constructor syntax PyretObject(1, 2) instead of an object literal'),
-  unsupported('object', 'empty', '{}', 'see object flat'),
-  unsupported('object', 'nested', '{p: point(1, 2)}', 'see object flat'),
-  unsupported('object', 'field', 'box({x: 1})', 'see object flat'),
+  pending('object', 'empty', '{}', 'see object flat'),
+  pending('object', 'nested', '{p: point(1, 2)}', 'see object flat'),
+  pending('object', 'field', 'box({x: 1})', 'see object flat'),
 
   // -- tuples ----------------------------------------------------------------
-  unsupported('tuple', 'root', '{1; 2}',
+  pending('tuple', 'root', '{1; 2}',
     'a PTuple has vals rather than dict, so the relationalizer records nothing for it'),
-  unsupported('tuple', 'field', 'box({1; 2})', 'see tuple root'),
-  unsupported('tuple', 'shared-elements', 'block:\n  p = point(1, 2)\n  {p; p}\nend', 'see tuple root'),
+  pending('tuple', 'field', 'box({1; 2})', 'see tuple root'),
+  pending('tuple', 'shared-elements', 'block:\n  p = point(1, 2)\n  {p; p}\nend', 'see tuple root'),
 
   // -- raw arrays ------------------------------------------------------------
-  unsupported('raw-array', 'root', '[raw-array: 1, 2]',
+  pending('raw-array', 'root', '[raw-array: 1, 2]',
     'a JS array at the root is not a Pyret object; it becomes an empty PyretObject atom'),
-  rejected('raw-array', 'field', 'box([raw-array: 1, 2])',
-    'multiple array elements occupy one constructor position; v6 rejects the non-scalar field',
-    'Pyret constructor field must have one value'),
-  unsupported('raw-array', 'duplicates', 'box([raw-array: 1, 1])',
-    'with numbersIdempotent (the default) both elements are the same atom and the duplicate tuple is dropped', 'mismatch'),
+  pending('raw-array', 'field', 'box([raw-array: 1, 2])',
+    'multiple array elements occupy one constructor position; v6 rejects the non-scalar field'),
+  pending('raw-array', 'duplicates', 'box([raw-array: 1, 1])',
+    'with numbersIdempotent (the default) both elements are the same atom and the duplicate tuple is dropped'),
 
   // -- refs and cycles -------------------------------------------------------
-  rejected('ref', 'ref-field', 'cell(5)',
+  pending('ref', 'ref-field', 'cell(5)',
     'the PRef field is dropped; v6 rejects the incomplete constructor datum'),
-  rejected('cycle', 'ref-cycle', 'block:\n  c = cell(nothing)\n  c!{next: c}\n  c\nend',
+  pending('cycle', 'ref-cycle', 'block:\n  c = cell(nothing)\n  c!{next: c}\n  c\nend',
     'the cyclic PRef field is dropped; v6 rejects the incomplete constructor datum'),
 
   // -- functions -------------------------------------------------------------
-  unsupported('function', 'lambda', 'lam(x): x end',
+  pending('function', 'lambda', 'lam(x): x end',
     'torepr prints <function> deterministically, but a PFunction has no dict and becomes an empty PyretObject atom'),
-  unsupported('function', 'field', 'box(lam(x): x end)',
+  pending('function', 'field', 'box(lam(x): x end)',
     'the function becomes a generic PyretObject atom; reify emits an unbound PyretObject name'),
 
   // -- value skeletons (_output) --------------------------------------------
   supported('skeleton', 'custom-collection', 'custom(7)',
     'the datum ignores _output; torepr applies it again to the reconstructed value'),
   supported('skeleton', 'custom-constr', 'shown(1, 2)'),
-  unsupported('skeleton', 'list-set', '[list-set: 1, 2]',
+  pending('skeleton', 'list-set', '[list-set: 1, 2]',
     'reify prints list-set(link(...)), but list-set in scope is the [list-set: ...] constructor object, not a function'),
-  unsupported('skeleton', 'tree-set', '[tree-set: 1, 2]',
+  pending('skeleton', 'tree-set', '[tree-set: 1, 2]',
     'the datum exposes the internal AVL tree (branch/leaf variants), whose constructors are not in scope'),
-  unsupported('skeleton', 'string-dict', '[SD.string-dict: "a", 1]',
+  pending('skeleton', 'string-dict', '[SD.string-dict: "a", 1]',
     'the entries live in an opaque JS map behind the object, so the datum is a single atom with no relations'),
-  unsupported('skeleton', 'table', 'table: a, b row: 1, 2 end',
+  pending('skeleton', 'table', 'table: a, b row: 1, 2 end',
     'rows become an n-ary row relation, which reify does not turn back into table syntax'),
 
   // -- sharing and multiplicity ---------------------------------------------
@@ -207,7 +202,7 @@ const ROWS = [
  * booleans, the prelude's data variants, lists and option. Values are produced
  * as Pyret source text; Pyret itself computes both sides of the comparison.
  * Non-fixnum numbers, tuples, objects, raw arrays, refs and functions are
- * deliberately absent -- they are the documented unsupported rows above.
+ * deliberately absent -- they are the pending desired-behavior rows above.
  */
 function arbitraries(fc) {
   const int = fc.integer({ min: -999, max: 999 }).map(String);
