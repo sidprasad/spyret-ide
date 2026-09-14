@@ -106,6 +106,14 @@ async function ensureServer(options = {}) {
 
 /** Open the editor and wait until Pyret, the REPL hook and spytial-core are ready. */
 async function openIde(baseUrl, pageCount = 2) {
+  // Integration-only override: replay locally built core assets at the editor's
+  // existing URLs. Production pins and the Pyret runtime are unchanged. Fail
+  // before launch if any asset is missing; never mix local and CDN core copies.
+  const localCore = process.env.SPYTIAL_CORE_DIST ? new Map([
+    'browser/spytial-core-complete.global.js',
+    'components/react-component-integration.global.js',
+    'components/react-component-integration.css',
+  ].map(relative => [relative, fs.readFileSync(path.resolve(process.env.SPYTIAL_CORE_DIST, relative))])) : null;
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: process.env.SHOW_BROWSER ? false : 'new',
@@ -117,6 +125,18 @@ async function openIde(baseUrl, pageCount = 2) {
     // Loading two 40 MB Pyret runtimes concurrently creates substantial
     // compilation/memory pressure. Initialize the pages sequentially.
     for (const page of pages) {
+      if (localCore) {
+        await page.evaluateOnNewDocument(() => { window.__reifyFidelityLocalCore = true; });
+        await page.setRequestInterception(true);
+        page.on('request', request => {
+          const match = /^https:\/\/cdn\.jsdelivr\.net\/npm\/spytial-core@[^/]+\/dist\/([^?]+)(?:\?.*)?$/.exec(request.url());
+          if (match && localCore.has(match[1])) {
+            return request.respond({ status: 200, headers: { 'access-control-allow-origin': '*' },
+              contentType: match[1].endsWith('.css') ? 'text/css' : 'application/javascript', body: localCore.get(match[1]) });
+          }
+          return request.continue();
+        });
+      }
       page.setDefaultTimeout(180000);
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
@@ -217,6 +237,11 @@ function pageRuntime() {
       return u.ok ? { ok: true } : { ok: false, error: u.error };
     },
     coreVersion() {
+      if (window.__reifyFidelityLocalCore) {
+        const version = window.spytialcore.version;
+        if (typeof version !== 'string' || version === 'unknown') throw new Error('Local core must expose its build version');
+        return version;
+      }
       const script = Array.from(document.scripts).map((s) => s.src).find((s) => /spytial-core@/.test(s));
       const m = script && /spytial-core@([^/]+)/.exec(script);
       return m ? m[1] : 'unknown';

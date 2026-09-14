@@ -13,6 +13,7 @@ async function start() {
     if (versions[0] !== versions[1]) throw new Error('Producer/decoder core versions differ');
     const metadata = { baseUrl: server.baseUrl, coreVersion: versions[0],
       browserVersion: await ide.browser.version(), nodeVersion: process.version };
+    if (process.env.SPYTIAL_CORE_DIST) metadata.coreDistOverride = require('path').resolve(process.env.SPYTIAL_CORE_DIST);
     // Record the exact deployed artifacts, not just this checkout's version.
     // The runtime can come from a different build or a supplied BASE_URL.
     metadata.artifacts = await ide.page.evaluate(async () => {

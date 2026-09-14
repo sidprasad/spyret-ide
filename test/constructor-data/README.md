@@ -115,6 +115,9 @@ npm run test:constructor-data:unit
 
 # Optional larger strict measurement (samples per family and per schema)
 CONSTRUCTOR_RUNS=30 CONSTRUCTOR_SCHEMAS=10 CONSTRUCTOR_SEED=1 npm run constructor-data-report
+
+# Measure a locally built core without publishing it or changing editor pins
+SPYTIAL_CORE_DIST=/absolute/path/to/spytial-core/dist npm run constructor-data-report
 ```
 
 The browser commands require built `build/web`, Chrome/Chromium, and access to
@@ -126,6 +129,19 @@ The strict command defaults to `CONSTRUCTOR_RUNS=0`, `CONSTRUCTOR_SCHEMAS=0`,
 and `CONSTRUCTOR_SEED=1`. The regression suite always uses the fixed 30 cases.
 `CONSTRUCTOR_REPORT` overrides `build/constructor-data-report.json` in either
 command. Reports are generated artifacts, not committed fixtures.
+
+`SPYTIAL_CORE_DIST` requires both the browser and components builds. It serves
+those local JS/CSS bytes in place of the editor's core CDN requests in both
+pages. Missing files are fatal; the Pyret runtime is not replaced. Reports
+record the override directory, actual exported core version, and fingerprints
+of the bytes served (the request URLs still reflect the editor's production
+pins). Use the strict measurement, not the fixed-4.4.3 regression baseline,
+when checking a new core implementation.
+
+Local-core runs also add three fixed regression witnesses: Unicode source
+normalization at the root and in a field (including an unpaired surrogate),
+and two constructors whose identically named `value` fields occupy different
+positions in the same datum. Thus local runs start with 33 fixed cases.
 
 Reports retain the manifest, source expressions and declarations, A/B strings,
 reified expressions, exported/received data, failure stages, environment
@@ -166,3 +182,20 @@ The older `test/reify-fidelity` experiment remains available. It supplies fixed
 constructor-field metadata and adapts primitive roots, so its higher match
 count answers a different question and is not comparable to this datum-only
 reification experiment.
+
+## Local core 6.0.0 verification
+
+Against the locally built identity-preserving core (not the production CDN pin):
+
+- Seed 1, `CONSTRUCTOR_RUNS=10 CONSTRUCTOR_SCHEMAS=5`: **154/154 exact matches**.
+- Seed 2, `CONSTRUCTOR_RUNS=3 CONSTRUCTOR_SCHEMAS=2`: **63/63 exact matches**.
+- Both strict commands completed with `fidelityHolds: true` and exit code 0.
+- The unchanged pinned-4.4.3 regression suites still pass 111 tests, retaining
+  their documented known-gap outcomes. They have not been upgraded silently.
+
+These runs use the same runtime/JSON/reification/Pyret-check path, with no
+constructor cache passed to the reifier. The new core preserves positions in
+relation IDs and constructor arity in atom metadata. Generated tests also
+exposed Pyret source normalization of literal Unicode (U+FAAA to U+7740); the
+core now emits code-unit escapes so reconstruction preserves the string.
+This verifies the recorded finite samples, not every Pyret datatype or printer.
