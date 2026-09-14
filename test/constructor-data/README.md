@@ -150,6 +150,34 @@ Empty runs, missing/duplicate/unexpected IDs, initialization errors, and run
 errors cannot report `fidelityHolds: true`. `complete: true` means the planned
 measurement finished, not that its values all round-tripped.
 
+## Pull-request CI
+
+The [Pyret constructor round trips workflow](../../.github/workflows/constructor-data.yml)
+runs on every pull request, pushes to `main`, and manual dispatch. Its two
+independent jobs run the strict measurement with seed 1 (10 samples per family
+and schema, 5 schemas) and seed 2 (3 samples, 2 schemas). Both include the 33
+fixed local-core witnesses. A mismatch, incomplete report, build failure, or
+timeout fails the job; neither job uses the known-gap regression baseline as
+its fidelity criterion.
+
+CI installs the IDE's lockfile, builds its actual Pyret runtime, and separately
+builds the core browser and matching component bundles from the immutable
+`SPYTIAL_CORE_REF` commit in the workflow. That pin initially selects the core
+6.0.0 candidate in [core PR #591](https://github.com/sidprasad/spytial-core/pull/591).
+It does **not** track the core branch automatically or change production CDN
+pins. Update the commit deliberately when adopting later core fixes.
+
+Jobs use Node 22.22.2 and the Ubuntu 24.04 runner's installed Chrome. Each job
+uploads a `constructor-data-seed-N` artifact for 14 days, including the JSON
+report, measurement log, and IDE/core/Pyret revision and browser provenance.
+The report contains the actual served runtime/core fingerprints. Uploads run
+even after failures; failures before measurement may have only provenance,
+with setup/build details in the Actions log. No deployment credentials are
+needed, and the workflow token has read-only repository access.
+
+The checks run automatically, but making them mandatory for merging is a
+separate repository branch-protection/ruleset setting.
+
 ## Measured baseline
 
 With the editor's pinned spytial-core **4.4.3**, Node 22.22.2, and Chrome 152:

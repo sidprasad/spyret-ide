@@ -1,0 +1,121 @@
+name: Pyret constructor round trips
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: constructor-data-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Core PR #591: immutable candidate pin, not the IDE's production CDN pin.
+  # Update deliberately when adopting a newer core implementation.
+  SPYTIAL_CORE_REF: 5299ce24bb887c82c727418984d2a2d6335a33d3
+
+jobs:
+  round-trip:
+    name: Real Pyret / seed ${{ matrix.seed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - seed: 1
+            runs: 10
+            schemas: 5
+          - seed: 2
+            runs: 3
+            schemas: 2
+    defaults:
+      run:
+        shell: bash
+        working-directory: ide
+    steps:
+      - name: Check out IDE
+        uses: actions/checkout@v4
+        with:
+          path: ide
+          persist-credentials: false
+
+      - name: Check out pinned core source
+        uses: actions/checkout@v4
+        with:
+          repository: sidprasad/spytial-core
+          ref: ${{ env.SPYTIAL_CORE_REF }}
+          path: spytial-core
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: |
+            ide/package-lock.json
+            spytial-core/package-lock.json
+
+      - name: Record source and browser versions
+        run: |
+          mkdir -p build/constructor-data-ci
+          {
+            git log -1 --format='IDE %H'
+            git -C ../spytial-core log -1 --format='Core %H'
+            node --version
+            npm --version
+            google-chrome --version
+            node -p '"Pyret " + require("./package-lock.json").packages["node_modules/pyret-lang"].resolved'
+          } | tee build/constructor-data-ci/provenance.txt
+
+      - name: Install locked IDE dependencies
+        run: |
+          # The lockfile contains public GitHub SSH URLs; CI needs no SSH key.
+          git config --global url.https://github.com/.insteadOf ssh://git@github.com/
+          npm ci --ignore-scripts
+
+      - name: Check report validity and harness sequencing
+        run: npm run test:constructor-data:unit
+
+      - name: Build the IDE and its real Pyret runtime
+        timeout-minutes: 15
+        env:
+          ASSET_BASE_URL: http://localhost:4999
+        run: |
+          ln -s node_modules/pyret-lang pyret
+          make -C pyret phaseA-deps
+          npx --no-install webpack
+          make web
+          make build/web/js/cpo-main.jarr
+
+      - name: Build pinned core browser and component bundles
+        working-directory: spytial-core
+        run: |
+          npm ci
+          npm run build:parser
+          npm run build:browser
+          npm run build:components
+
+      - name: Require exact real-Pyret inspection round trips
+        timeout-minutes: 15
+        env:
+          SPYTIAL_CORE_DIST: ${{ github.workspace }}/spytial-core/dist
+          CONSTRUCTOR_SEED: ${{ matrix.seed }}
+          CONSTRUCTOR_RUNS: ${{ matrix.runs }}
+          CONSTRUCTOR_SCHEMAS: ${{ matrix.schemas }}
+          CONSTRUCTOR_REPORT: build/constructor-data-ci/report.json
+        run: npm run constructor-data-report | tee build/constructor-data-ci/measurement.log
+
+      - name: Upload report and provenance, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: constructor-data-seed-${{ matrix.seed }}
+          path: ide/build/constructor-data-ci/
+          if-no-files-found: warn
+          retention-days: 14
