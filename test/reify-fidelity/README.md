@@ -22,10 +22,13 @@ cache is reset on every decode.
 
 `PRELUDE` and `CONSTRUCTOR_FIELDS` in `corpus.js` are fixed before testing.
 They declare the available types, constructor field order, and methods.
-The latter supplies the ordering required by core's reification code: for example,
+Historically the latter supplied the ordering required by core's reification code: for example,
 `node(v, l, r)` must not silently become `node(l, r, v)` through alphabetical
 sorting. No constructor metadata is learned from an individual test value.
-Both the prelude and schema are included in each JSON report.
+Both the prelude and schema are included in each JSON report. Core 6.0.0 now
+records field order and arity in the datum itself; this legacy context remains
+here for the broader experiment. The stricter `test/constructor-data` harness
+does not seed it.
 
 The harness registers this schema through synthetic zero-valued records,
 then invokes `PyretDataInstance.prototype.reify.call(freshJsonInstance)`.
@@ -50,8 +53,8 @@ The reference output is specifically `torepr`, not every graphical REPL
 renderer or the distinct command-line `$cli` renderer.
 
 Primitive roots use the single-atom adapter also used by core's Pyret
-oracles/`fromExpression`; the IDE's direct `genlayout` constructor path does
-not handle primitive roots. Primitive results therefore describe that
+oracles/`fromExpression`; core 6.0.0 also accepts primitive roots directly.
+This older harness still uses the adapter, so its primitive results describe that
 adapter, not an end-to-end `genlayout` test.
 
 ## Running
@@ -92,7 +95,9 @@ combinations of the declared supported forms.
 
 - `supported`: exact equality of A and B is required.
 - `unsupported`: the declared `mismatch` or `reify-eval-error` is required.
-  Unexpected success or a different failure stage fails the suite.
+  An explicitly declared `reify-error` requires the exact recorded rejection
+  message. Unexpected success, a different stage, or a different rejection
+  message fails the suite.
 - `value-error`, `relationalize-error`, and `decode-error` always fail the
   evaluation; they cannot be treated as expected unsupported behavior.
 
@@ -111,12 +116,26 @@ only that datum and the same fixed context can distinguish the pair.
 An isolation regression also poisons the decoder's constructor cache and
 reorders relation records before replaying an exported `node` datum.
 
-## Verified boundary on spytial-core 4.4.3
+## Released spytial-core 6.0.0 boundary
+
+The updated corpus requires 38 supported rows to round-trip, including
+zero-argument constructor applications (`zero()`). The 27 unsupported rows
+remain outside the fidelity claim: 20 fail expression evaluation, two produce
+different inspection strings, and five are rejected by the reifier.
+
+The five rejections are rough-number and big-integer fields, a two-element
+raw-array field, a reference field, and a reference cycle. Core detects missing
+constructor positions or multiple values in one position instead of emitting
+an incorrect expression. Tests assert the exact rejection messages, separately
+from JSON/cache setup failures, which are always harness failures. The two
+information-loss witnesses above are retained.
+
+## Historical boundary on spytial-core 4.4.3
 
 37 supported corpus rows cover small integers, strings, booleans, the
 declared data variants and deterministic `_output` methods, option/either,
 lists, shared subtrees, and repeated values under named fields. The other
-28 rows fail the current reconstruction path.
+28 rows failed that reconstruction path.
 
 Verified on 2026-09-11 with native ARM Node 22.22.2 and Chrome 152: all
 37 supported corpus rows and 100 generated examples (seed 1) round-tripped.

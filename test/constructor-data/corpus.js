@@ -111,14 +111,12 @@ function fixtures(runs = 0, seed = 1, schemaCount = 0) {
   if (!Number.isSafeInteger(runs) || runs < 0 || !Number.isSafeInteger(schemaCount) || schemaCount < 0
       || !Number.isInteger(seed)) throw new Error('Invalid sample counts/seed');
   const result = CASES.map(c => ({ id: c.name, expr: c.expr, prelude: PRELUDE }));
-  // New-core regression witnesses; the original fixed 4.4.3 baseline stays 30.
-  if (process.env.SPYTIAL_CORE_DIST) {
-    result.push({ id: 'unicode-normalization-root', expr: '"\\uFAAA"', prelude: PRELUDE });
-    result.push({ id: 'unicode-normalization-field', expr: 'wrap("e\\u0301\\uD800")', prelude: PRELUDE });
-    result.push({ id: 'same-field-different-position',
-      prelude: PRELUDE + '\ndata LeftData: left-data(value, other) end\ndata RightData: right-data(other, value) end\n',
-      expr: 'duo(left-data(1, 2), right-data(3, 4))' });
-  }
+  // Always test these v6 regressions, including the production CDN path.
+  result.push({ id: 'unicode-normalization-root', expr: '"\\uFAAA"', prelude: PRELUDE });
+  result.push({ id: 'unicode-normalization-field', expr: 'wrap("e\\u0301\\uD800")', prelude: PRELUDE });
+  result.push({ id: 'same-field-different-position',
+    prelude: PRELUDE + '\ndata LeftData: left-data(value, other) end\ndata RightData: right-data(other, value) end\n',
+    expr: 'duo(left-data(1, 2), right-data(3, 4))' });
   const fc = require('fast-check');
   if (runs) {
     for (const [family, arb] of Object.entries(arbitraries(fc))) {

@@ -237,14 +237,13 @@ function pageRuntime() {
       return u.ok ? { ok: true } : { ok: false, error: u.error };
     },
     coreVersion() {
-      if (window.__reifyFidelityLocalCore) {
-        const version = window.spytialcore.version;
-        if (typeof version !== 'string' || version === 'unknown') throw new Error('Local core must expose its build version');
-        return version;
-      }
+      const version = window.spytialcore.version;
+      if (typeof version !== 'string' || version === 'unknown') throw new Error('Core must expose its build version');
+      if (window.__reifyFidelityLocalCore) return version;
       const script = Array.from(document.scripts).map((s) => s.src).find((s) => /spytial-core@/.test(s));
       const m = script && /spytial-core@([^/]+)/.exec(script);
-      return m ? m[1] : 'unknown';
+      if (!m || m[1] !== version) throw new Error('Loaded core version differs from the editor CDN pin');
+      return version;
     },
     async exportWorkingCase(expr) {
       const a = await run(expr);
@@ -342,9 +341,10 @@ function pageRuntime() {
     },
     async decode(datum) {
       const row = {};
+      let failureStage = 'decode-error';
       try {
-        // The only constructor metadata is fixed before any corpus value is
-        // made. Never copy getGlobalConstructorCache() from the producer.
+        // Legacy fixed context; v6 constructor data carries its own metadata.
+        // Never copy getGlobalConstructorCache() from the producer.
         PDI.clearGlobalConstructorCache();
         Object.entries(constructorFields).forEach(([name, fields]) => {
           // PDI has no public schema-registration API. Synthetic zero-valued
@@ -360,9 +360,10 @@ function pageRuntime() {
         // The editor's component bundle can install another core export copy.
         // reify reads this fresh JSON instance through getAtoms/getRelations;
         // there is no PDI containing an original value on this path.
+        failureStage = 'reify-error';
         row.R = PDI.prototype.reify.call(fresh);
       } catch (e) {
-        return { verdict: 'decode-error', error: String(e).slice(0, 300) };
+        return { verdict: failureStage, error: String(e).slice(0, 300) };
       } finally {
         PDI.clearGlobalConstructorCache();
       }

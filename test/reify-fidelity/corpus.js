@@ -58,8 +58,9 @@ end
 `;
 
 // Fixed type definitions available to the decoder, independent of the input.
-// Field order is not exported by PyretDataInstance. Lists, option, and either
-// match the bundled Pyret libraries; the other entries match PRELUDE above.
+// Retained legacy context: v6 PyretDataInstance now exports field order itself.
+// Lists, option, and either match the bundled Pyret libraries; the other entries
+// match PRELUDE above.
 const CONSTRUCTOR_FIELDS = {
   point: ['x', 'y'], node: ['v', 'l', 'r'], leaf: [],
   pair: ['fst', 'snd'], box: ['v'], zero: [], cell: ['next'],
@@ -74,6 +75,8 @@ function row(category, name, expr, expect, note) {
 const supported = (category, name, expr, note) => row(category, name, expr, 'supported', note);
 const unsupported = (category, name, expr, note, failure = 'reify-eval-error') =>
   Object.assign(row(category, name, expr, 'unsupported', note), { failure });
+const rejected = (category, name, expr, note, message = 'Incomplete Pyret constructor fields') =>
+  Object.assign(unsupported(category, name, expr, note, 'reify-error'), { failureMessage: 'Error: ' + message });
 
 /**
  * Representative rows keyed to the runtime's `torepr` dispatch
@@ -93,11 +96,11 @@ const ROWS = [
   unsupported('number', 'decimal-literal', '0.5',
     'Pyret reads 0.5 as the exact rational 1/2 (see rational)'),
   unsupported('number', 'roughnum', '~3.14', 'Roughnum root (see rational)'),
-  unsupported('number', 'roughnum-field', 'box(~1.5)',
-    'a Roughnum has n but no d, so it is neither atomic nor an object and the field is dropped', 'mismatch'),
+  rejected('number', 'roughnum-field', 'box(~1.5)',
+    'the Roughnum field is dropped; v6 rejects the incomplete constructor datum'),
   unsupported('number', 'bignum', '123456789012345678901234567890', 'BigInteger root (see rational)'),
-  unsupported('number', 'bignum-field', 'box(123456789012345678901234567890)',
-    'a BigInteger has neither n/d nor dict/brands and the field is dropped', 'mismatch'),
+  rejected('number', 'bignum-field', 'box(123456789012345678901234567890)',
+    'the BigInteger field is dropped; v6 rejects the incomplete constructor datum'),
 
   // -- strings ---------------------------------------------------------------
   supported('string', 'plain', '"hi"'),
@@ -119,8 +122,8 @@ const ROWS = [
 
   // -- user data variants ----------------------------------------------------
   supported('data', 'singleton', 'leaf'),
-  unsupported('data', 'nullary-constructor', 'zero()',
-    'reify prints a fieldless variant as the bare name, which for an arity-0 constructor is the function, not the value', 'mismatch'),
+  supported('data', 'nullary-constructor', 'zero()',
+    'v6 records arity and distinguishes zero() from a singleton'),
   supported('data', 'flat', 'point(1, 2)'),
   supported('data', 'nested', 'box(point(1, 2))'),
   supported('data', 'tree', 'node(1, node(2, leaf, leaf), node(3, leaf, node(4, leaf, leaf)))'),
@@ -159,16 +162,17 @@ const ROWS = [
   // -- raw arrays ------------------------------------------------------------
   unsupported('raw-array', 'root', '[raw-array: 1, 2]',
     'a JS array at the root is not a Pyret object; it becomes an empty PyretObject atom'),
-  unsupported('raw-array', 'field', 'box([raw-array: 1, 2])',
-    'elements survive as tuples of the field relation, but reify prints them as [list: ...] and torepr says [raw-array: ...]', 'mismatch'),
+  rejected('raw-array', 'field', 'box([raw-array: 1, 2])',
+    'multiple array elements occupy one constructor position; v6 rejects the non-scalar field',
+    'Pyret constructor field must have one value'),
   unsupported('raw-array', 'duplicates', 'box([raw-array: 1, 1])',
     'with numbersIdempotent (the default) both elements are the same atom and the duplicate tuple is dropped', 'mismatch'),
 
   // -- refs and cycles -------------------------------------------------------
-  unsupported('ref', 'ref-field', 'cell(5)',
-    'a PRef has state/value rather than dict, so the field is dropped and reify prints the bare constructor', 'mismatch'),
-  unsupported('cycle', 'ref-cycle', 'block:\n  c = cell(nothing)\n  c!{next: c}\n  c\nend',
-    'the PRef field is dropped, so this case decodes to the bare cell constructor', 'mismatch'),
+  rejected('ref', 'ref-field', 'cell(5)',
+    'the PRef field is dropped; v6 rejects the incomplete constructor datum'),
+  rejected('cycle', 'ref-cycle', 'block:\n  c = cell(nothing)\n  c!{next: c}\n  c\nend',
+    'the cyclic PRef field is dropped; v6 rejects the incomplete constructor datum'),
 
   // -- functions -------------------------------------------------------------
   unsupported('function', 'lambda', 'lam(x): x end',

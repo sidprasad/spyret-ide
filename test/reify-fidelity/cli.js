@@ -41,7 +41,8 @@ async function main() {
     for (const row of ROWS) {
       if (row.expect === 'out-of-scope') continue;
       const r = Object.assign(
-        { source: 'corpus', category: row.category, name: row.name, expect: row.expect, failure: row.failure, note: row.note },
+        { source: 'corpus', category: row.category, name: row.name, expect: row.expect,
+          failure: row.failure, failureMessage: row.failureMessage, note: row.note },
         await runCase(ide, row.expr, row.options),
       );
       rows.push(r);

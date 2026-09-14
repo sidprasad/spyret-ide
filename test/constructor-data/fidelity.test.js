@@ -6,21 +6,7 @@ const { fixtures } = require('./corpus');
 const { start, runCase } = require('./harness');
 const { writeReport } = require('./report');
 
-// This is a regression baseline, NOT an assertion that fidelity holds for all
-// these inputs. The separate measurement command exits nonzero on ANY gap.
-const BASELINE = {
-  'integer-zero': 'mismatch', 'integer-min': 'relationalize-error',
-  'integer-max': 'relationalize-error', 'boolean-true': 'relationalize-error',
-  'boolean-false': 'mismatch', 'empty-string': 'mismatch',
-  escaping: 'relationalize-error', unicode: 'relationalize-error',
-  'zero-constructor': 'mismatch', 'different-leaf-types': 'mismatch', 'field-order': 'mismatch',
-  'tree-recursive': 'reify-eval-error', expression: 'mismatch',
-  'mutual-base': 'reify-eval-error', 'mutual-recursive': 'reify-eval-error',
-  'shared-subtree': 'reify-eval-error', 'equal-distinct-subtrees': 'reify-eval-error',
-  'additional-constructor': 'mismatch',
-};
-
-describe('Spyret working relationalizer/reifier: recorded 4.4.3 baseline', function () {
+describe('Spyret working relationalizer/reifier: released 6.0.0', function () {
   this.timeout(30 * 60 * 1000);
   const cases = fixtures();
   const rows = [], errors = [];
@@ -28,7 +14,7 @@ describe('Spyret working relationalizer/reifier: recorded 4.4.3 baseline', funct
   before(async function () {
     try {
       session = await start();
-      assert.strictEqual(session.metadata.coreVersion, '4.4.3', 'Re-measure the baseline after a core upgrade');
+      assert.strictEqual(session.metadata.coreVersion, '6.0.0', 'Re-measure after a core upgrade');
     } catch (e) { errors.push(String(e)); throw e; }
   });
   afterEach(function () {
@@ -41,19 +27,16 @@ describe('Spyret working relationalizer/reifier: recorded 4.4.3 baseline', funct
       const report = writeReport(file, cases, rows, session ? session.metadata : {}, errors);
       console.log(`\n  Actual fidelity: ${report.summary.passed}/${report.summary.total}; fidelityHolds=${report.summary.fidelityHolds}`);
       console.log(`  ${file}\n`);
-      assert.ok(report.summary.complete, 'Incomplete or failed regression run');
+      assert.ok(report.summary.fidelityHolds, 'Every planned fixture must round-trip exactly');
     }
   });
 
   for (const fixture of cases) {
-    const expected = BASELINE[fixture.id] || 'pass';
-    it(`${fixture.id} [${expected === 'pass' ? 'exact match' : 'known gap: ' + expected}]`, async function () {
+    it(`${fixture.id} [exact match]`, async function () {
       const row = await runCase(session, fixture);
       rows.push(row);
-      assert.strictEqual(row.verdict, expected, JSON.stringify(row));
-      if (row.verdict === 'pass' || row.verdict === 'mismatch') {
-        assert.deepStrictEqual(row.check, { blocks: 1, results: [expected === 'pass' ? 'success' : 'failure-not-equal'], errors: 0 });
-      }
+      assert.strictEqual(row.verdict, 'pass', JSON.stringify(row));
+      assert.deepStrictEqual(row.check, { blocks: 1, results: ['success'], errors: 0 });
     });
   }
 
@@ -74,6 +57,29 @@ describe('Spyret working relationalizer/reifier: recorded 4.4.3 baseline', funct
     const r = await session.ide.decoder.evaluate(d => window.__reifyFidelity.reifyWorkingDatum(d), replay);
     assert.strictEqual(r.verdict, 'reified', JSON.stringify(r));
     assert.strictEqual(r.R, row.R);
-    assert.strictEqual(r.R, 'duo(2, 9)'); // exposes the gap rather than repairing it in the test
+    assert.strictEqual(r.R, 'duo(9, 2)');
+  });
+
+  it('renders a constructor datum with the released evaluator and graph component', async function () {
+    const datum = rows.find(r => r.id === 'same-field-different-position').datum;
+    const rendered = await session.ide.page.evaluate(async d => {
+      const core = window.spytialcore;
+      const data = new core.JSONDataInstance(d);
+      const evaluator = new core.Evaluators.SGraphQueryEvaluator();
+      evaluator.initialize({ sourceData: data });
+      const spec = core.parseLayoutSpec('constraints: []\ndirectives: []');
+      const result = new core.LayoutInstance(spec, evaluator, 0, true).generateLayout(data);
+      const graph = document.createElement('webcola-cnd-graph');
+      graph.setAttribute('width', '400');
+      graph.setAttribute('height', '400');
+      document.body.appendChild(graph);
+      try {
+        await graph.renderLayout(result.layout);
+        return { nodes: result.layout.nodes.length,
+          renderedNodes: graph.shadowRoot.querySelectorAll('g.node').length };
+      } finally { graph.remove(); }
+    }, datum);
+    assert.ok(rendered.nodes > 0);
+    assert.strictEqual(rendered.renderedNodes, rendered.nodes);
   });
 });

@@ -13,6 +13,10 @@ const path = require('path');
 function isViolation(r) {
   if (r.source === 'generated') return r.verdict !== 'pass';
   if (r.expect === 'supported') return r.verdict !== 'pass';
+  if (r.expect === 'unsupported' && r.failure === 'reify-error') {
+    return r.verdict !== 'reify-error' || typeof r.failureMessage !== 'string'
+      || !r.failureMessage || r.error !== r.failureMessage;
+  }
   if (r.expect === 'unsupported') return !['mismatch', 'reify-eval-error'].includes(r.failure)
     || r.verdict !== r.failure;
   return r.expect !== 'out-of-scope';

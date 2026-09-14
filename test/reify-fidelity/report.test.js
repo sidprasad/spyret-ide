@@ -19,6 +19,19 @@ describe('Fidelity report validity', function () {
     }
   });
 
+  it('accepts only an explicitly declared reifier rejection with its exact message', function () {
+    const rejected = { ...unsupported, failure: 'reify-error', verdict: 'reify-error',
+      failureMessage: 'Error: Incomplete Pyret constructor fields',
+      error: 'Error: Incomplete Pyret constructor fields' };
+    assert.strictEqual(isViolation(rejected), false);
+    assert.strictEqual(isViolation({ ...rejected, failureMessage: undefined }), true);
+    assert.strictEqual(isViolation({ ...rejected, error: 'Error: unrelated bug' }), true);
+    assert.strictEqual(isViolation({ ...rejected, verdict: 'decode-error' }), true);
+    assert.strictEqual(isViolation({ ...rejected, verdict: 'pass' }), true);
+    assert.strictEqual(isViolation({ ...rejected, expect: 'supported' }), true);
+    assert.strictEqual(isViolation({ ...rejected, source: 'generated' }), true);
+  });
+
   it('does not report an empty or incomplete run as successful', function () {
     assert.strictEqual(summarize([]).boundaryHolds, false);
     assert.strictEqual(summarize([]).corpusPassRate, null);

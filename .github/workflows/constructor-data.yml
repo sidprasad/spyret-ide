@@ -13,11 +13,6 @@ concurrency:
   group: constructor-data-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-env:
-  # Core PR #591: immutable candidate pin, not the IDE's production CDN pin.
-  # Update deliberately when adopting a newer core implementation.
-  SPYTIAL_CORE_REF: fc44bf63fea5638ce0bdcf1605457e936b4fa1e7
-
 jobs:
   round-trip:
     name: Real Pyret / seed ${{ matrix.seed }}
@@ -44,29 +39,19 @@ jobs:
           path: ide
           persist-credentials: false
 
-      - name: Check out pinned core source
-        uses: actions/checkout@v7
-        with:
-          repository: sidprasad/spytial-core
-          ref: ${{ env.SPYTIAL_CORE_REF }}
-          path: spytial-core
-          persist-credentials: false
-
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
           node-version: 22.22.2
           cache: npm
-          cache-dependency-path: |
-            ide/package-lock.json
-            spytial-core/package-lock.json
+          cache-dependency-path: ide/package-lock.json
 
       - name: Record source and browser versions
         run: |
           mkdir -p build/constructor-data-ci
           {
             git log -1 --format='IDE %H'
-            git -C ../spytial-core log -1 --format='Core %H'
+            node -p 'require("fs").readFileSync("src/web/editor.html", "utf8").match(/https:\/\/cdn\.jsdelivr\.net\/npm\/spytial-core@[^" ]+/g).join("\n")'
             node --version
             npm --version
             google-chrome --version
@@ -93,18 +78,16 @@ jobs:
           make web
           make build/web/js/cpo-main.jarr
 
-      - name: Build pinned core browser and component bundles
-        working-directory: spytial-core
-        run: |
-          npm ci
-          npm run build:parser
-          npm run build:browser
-          npm run build:components
+      - name: Check released-core regressions and cache isolation
+        timeout-minutes: 10
+        env:
+          CONSTRUCTOR_REPORT: build/constructor-data-ci/regression-report.json
+          REIFY_REPORT: build/constructor-data-ci/legacy-boundary-report.json
+        run: npx --no-install mocha 'test/constructor-data/*.test.js' 'test/reify-fidelity/*.test.js' | tee build/constructor-data-ci/regression.log
 
       - name: Require exact real-Pyret inspection round trips
         timeout-minutes: 15
         env:
-          SPYTIAL_CORE_DIST: ${{ github.workspace }}/spytial-core/dist
           CONSTRUCTOR_SEED: ${{ matrix.seed }}
           CONSTRUCTOR_RUNS: ${{ matrix.runs }}
           CONSTRUCTOR_SCHEMAS: ${{ matrix.schemas }}
