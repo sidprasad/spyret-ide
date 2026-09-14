@@ -171,7 +171,7 @@ function pageRuntime() {
       const rt = val.runtime;
       const res = val.result;
       if (!rt.isSuccessResult(res)) return { ok: false, error: failureMessage(rt, res) };
-      return { ok: true, rt, answer: rt.getField(res.result, 'answer') };
+      return { ok: true, rt, answer: rt.getField(res.result, 'answer'), module: res.result };
     }
     if (v && v.val) return { ok: false, error: failureMessage(v.val.runtime, v.val.result) };
     try {
@@ -221,25 +221,72 @@ function pageRuntime() {
       const m = script && /spytial-core@([^/]+)/.exec(script);
       return m ? m[1] : 'unknown';
     },
-    async exportConstructorCase(expr) {
-      // Evaluate only the value first. Reject out-of-domain values before any
-      // printer runs (a custom _output may be effectful or fail).
+    async exportWorkingCase(expr) {
       const a = await run(expr);
       if (!a.ok) return { verdict: 'value-error', error: a.error };
-      let datum;
+      const row = {};
       try {
-        datum = window.PyretConstructorDatum.exportValue(a.rt, a.answer);
+        row.A = a.rt.toReprJS(a.answer, a.rt.ReprMethods._torepr);
+        if (typeof row.A !== 'string') throw new Error('Reference printer did not return a string');
       } catch (e) {
-        return { verdict: e.name === 'UnsupportedValue' ? 'rejected' : 'export-error',
-          reason: e.reason, error: String(e) };
+        return { verdict: 'reference-error', error: String(e) };
       }
-      // The reference printer sees the SAME value, not a second evaluation.
-      // Default printing on our finite immutable subset is synchronous.
       try {
-        const A = a.rt.toReprJS(a.answer, a.rt.ReprMethods._torepr);
-        return { verdict: 'exported', A, datum };
+        PDI.clearGlobalConstructorCache();
+        // Exactly the constructor invocation in trove/dom-render.js. No
+        // primitive-root adapter, synthetic wrapper or replacement encoding.
+        row.datum = datumOf(new PDI(a.answer, {}, window.__internalRepl));
+        return Object.assign(row, { verdict: 'exported' });
       } catch (e) {
-        return { verdict: 'reference-error', error: String(e), datum };
+        return Object.assign(row, { verdict: 'relationalize-error', error: String(e) });
+      } finally {
+        PDI.clearGlobalConstructorCache();
+      }
+    },
+    reifyWorkingDatum(datum) {
+      try {
+        PDI.clearGlobalConstructorCache();
+        const fresh = new window.spytialcore.JSONDataInstance(datum);
+        if (fresh.getErrors && fresh.getErrors().length) throw new Error(fresh.getErrors().join('; '));
+        const R = PDI.prototype.reify.call(fresh);
+        if (typeof R !== 'string') throw new Error('Reifier did not return an expression string');
+        return { verdict: 'reified', R, received: datumOf(fresh) };
+      } catch (e) {
+        return { verdict: 'reify-error', error: String(e) };
+      } finally {
+        PDI.clearGlobalConstructorCache();
+      }
+    },
+    async inspectExpression(expr) {
+      const b = await run('torepr(' + expr + ')');
+      if (!b.ok) return { verdict: 'reify-eval-error', error: b.error };
+      if (typeof b.answer !== 'string') return { verdict: 'harness-error', error: 'torepr returned a non-string' };
+      return { verdict: 'inspected', B: b.answer };
+    },
+    async checkStrings(expected, actual) {
+      // A and B reach this checker only AFTER datum-only reification and
+      // evaluation. This is input escaping, not a replacement Pyret printer.
+      const literal = s => '"' + s.split('').map(c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')).join('') + '"';
+      const code = 'check "Spytial inspection fidelity":\n  ' + literal(actual)
+        + ' is ' + literal(expected) + '\nend\nnothing';
+      const u = unwrap(await repl.restartInteractions(code, { typeCheck: false, checkAll: true }));
+      if (!u.ok) return { verdict: 'check-error', error: u.error };
+      try {
+        const blocks = u.rt.ffi.toArray(u.rt.getField(u.module, 'checks'));
+        const results = [];
+        let errors = 0;
+        for (const block of blocks) {
+          if (u.rt.getField(block, 'maybe-err').$name !== 'none') errors++;
+          for (const test of u.rt.ffi.toArray(u.rt.getField(block, 'test-results'))) results.push(test.$name);
+        }
+        const check = { blocks: blocks.length, results, errors };
+        if (blocks.length !== 1 || errors || results.length !== 1
+            || !['success', 'failure-not-equal'].includes(results[0])) {
+          return { verdict: 'check-error', error: 'Incomplete or unexpected Pyret check result', check };
+        }
+        return { verdict: results[0] === 'success' ? 'pass' : 'mismatch', check };
+      } catch (e) {
+        return { verdict: 'check-error', error: String(e) };
       }
     },
     async exportCase(expr, options) {

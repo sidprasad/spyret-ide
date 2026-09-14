@@ -27,14 +27,10 @@ data Wrapper:
   | singleton
   | zero()
 end
-data Cell: cell(ref next) end
+data Fresh: fresh(z, a) end
 data WithMethod:
   | with-method(n) with:
     method double(self): self.n * 2 end
-end
-data Custom:
-  | custom(n) with:
-    method _output(self): raise("custom printer must not run") end
 end
 `;
 
@@ -44,6 +40,8 @@ const CASES = [
   ['escaping', '"a\\n\\t\\r\\"\\\\"'], ['unicode', '"é😀\\u0000\\u007F\\u2028"'],
   ['singleton', 'singleton'], ['zero-constructor', 'zero()'],
   ['primitive-box', 'wrap(false)'], ['different-leaf-types', 'duo("5", 5)'],
+  ['boxed-integer-min', 'wrap(-2147483648)'], ['boxed-integer-max', 'wrap(2147483647)'],
+  ['boxed-escaping', 'wrap("a\\n\\t\\r\\"\\\\")'], ['boxed-unicode', 'wrap("é😀\\u0000\\u007F\\u2028")'],
   ['field-order', 'duo(9, 2)'], ['repeated-value', 'duo(1, 1)'],
   ['tree-base', 'tip'], ['tree-recursive', 'branch(1, branch(2, tip, tip), tip)'],
   ['expression', 'choose(true, add(lit(1), lit(2)), lit(3))'],
@@ -54,24 +52,8 @@ const CASES = [
   ['shared-subtree', 'block:\n t = branch(1, tip, tip)\n duo(t, t)\nend'],
   ['equal-distinct-subtrees', 'duo(branch(1, tip, tip), branch(1, tip, tip))'],
   ['ordinary-method', 'with-method(3)'],
-  ['interaction-declared-constructor', 'data Fresh: fresh(z, a) end\nfresh(9, 2)'],
+  ['additional-constructor', 'fresh(9, 2)'],
 ].map(([name, expr]) => ({ name, expr }));
-
-const REJECTED = [
-  ['fraction', '1/3', 'integer-domain'], ['roughnum', '~1', 'integer-domain'],
-  ['integer-below', '-2147483649', 'integer-domain'], ['integer-above', '2147483648', 'integer-domain'],
-  ['big-integer', '123456789012345678901234567890', 'integer-domain'],
-  ['nested-fraction', 'wrap(1/3)', 'integer-domain'],
-  ['nothing', 'nothing', 'not-constructor-data'], ['object', '{x: 1}', 'not-constructor-data'],
-  ['tuple', '{1; 2}', 'not-constructor-data'], ['array', '[raw-array: 1, 1]', 'not-constructor-data'],
-  ['function', 'lam(x): x end', 'not-constructor-data'],
-  ['nested-object', 'wrap({x: 1})', 'not-constructor-data'],
-  ['mutable-field', 'cell(1)', 'mutable-reference'],
-  ['reference-cycle', 'block:\n c = cell(nothing)\n c!{next: c}\n c\nend', 'mutable-reference'],
-  ['custom-printer', 'custom(1)', 'custom-output'],
-  ['nested-custom-printer', 'wrap(custom(1))', 'custom-output'],
-  ['builtin-list', '[list: 1, 2]', 'custom-output'],
-].map(([name, expr, reason]) => ({ name, expr, reason }));
 
 // Type-directed generators: recursive child positions always have the declared
 // datatype. Depth is a hard construction bound, not just a sampling preference.
@@ -125,4 +107,23 @@ function schemaArbitrary(fc) {
   });
 }
 
-module.exports = { PRELUDE, CASES, REJECTED, arbitraries, schemaArbitrary };
+function fixtures(runs = 0, seed = 1, schemaCount = 0) {
+  if (!Number.isSafeInteger(runs) || runs < 0 || !Number.isSafeInteger(schemaCount) || schemaCount < 0
+      || !Number.isInteger(seed)) throw new Error('Invalid sample counts/seed');
+  const result = CASES.map(c => ({ id: c.name, expr: c.expr, prelude: PRELUDE }));
+  const fc = require('fast-check');
+  if (runs) {
+    for (const [family, arb] of Object.entries(arbitraries(fc))) {
+      fc.sample(arb, { seed, numRuns: runs }).forEach((expr, i) =>
+        result.push({ id: `${family}/${i}`, expr, prelude: PRELUDE }));
+    }
+  }
+  fc.sample(schemaArbitrary(fc), { seed, numRuns: schemaCount }).forEach((s, i) => {
+    s.witnesses.forEach((expr, j) => result.push({ id: `schema-${i}/witness-${j}`, expr, prelude: s.prelude }));
+    fc.sample(s.value, { seed: seed + i, numRuns: runs }).forEach((expr, j) =>
+      result.push({ id: `schema-${i}/sample-${j}`, expr, prelude: s.prelude }));
+  });
+  return result;
+}
+
+module.exports = { PRELUDE, CASES, arbitraries, schemaArbitrary, fixtures };

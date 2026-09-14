@@ -163,13 +163,18 @@ many use cases).
 
 ## Reify fidelity evaluation
 
-For the newer, explicitly specified **constructor-data model** and a decoder
-that reconstructs inspection strings without evaluating Pyret, see
-[test/constructor-data/README.md](test/constructor-data/README.md). This is an
-opt-in experimental adapter; it does not change the existing diagram path.
+For an end-to-end test of the **working relationalizer/reifier** against
+Spyret's actual Pyret runtime, see
+[test/constructor-data/README.md](test/constructor-data/README.md). It serializes
+the datum without a producer cache, evaluates the reified expression in fresh
+Pyret interactions, and compares `torepr` strings with an actual Pyret check.
+There is no replacement relationalizer. The strict measurement currently
+exits nonzero on known fidelity gaps; the regression suite records those gaps
+separately and must not be mistaken for a successful fidelity claim.
 
 ```
 npm run test:constructor-data
+npm run constructor-data-report
 ```
 
 `test/reify-fidelity/` measures whether a Spytial datum built from a live Pyret

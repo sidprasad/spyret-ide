@@ -83,7 +83,8 @@
     "test:reify-fidelity": "mocha test/reify-fidelity/*.test.js",
     "reify-fidelity-report": "node test/reify-fidelity/cli.js",
     "test:constructor-data": "mocha test/constructor-data/*.test.js",
-    "test:constructor-data:unit": "mocha test/constructor-data/model.test.js"
+    "test:constructor-data:unit": "mocha test/constructor-data/report.test.js",
+    "constructor-data-report": "node test/constructor-data/cli.js"
   },
   "repository": {
     "type": "git",
