@@ -13,8 +13,10 @@ decoder page:                                   v
                        JSONDataInstance -> core reify -> eval -> torepr -> B
 ```
 
-The decoder page receives only the serialized datum. It never receives the
-input expression, A, the original value, `originalObjects`, or a constructor
+The reifier receives only the serialized datum and a separate root atom ID.
+The producer selects its input atom before transport; root selection is not
+metadata in `IDataInstance` and does not encode the value in an ID. The reifier
+never receives the input expression, A, the original value, `originalObjects`, or a constructor
 cache from the producer. Every decode creates a fresh `JSONDataInstance`.
 The producer's constructor cache is cleared after export; the decoder's
 cache is reset on every decode.
@@ -29,7 +31,7 @@ working diagram path, including primitive roots.
 The decoder first resets its interactions to `nothing`. With constructor
 caches cleared, it normalizes the serialized datum using
 `new JSONDataInstance(datum)` with **default options**, then invokes
-`PyretDataInstance.prototype.reify.call(freshJsonInstance)`. This selects the
+`PyretDataInstance.prototype.reify.call(freshJsonInstance, rootId)`. This selects the
 same core class whose cache was cleared; the editor can load two core copies.
 
 Only **after** that method has returned an expression does the decoder load
@@ -41,12 +43,13 @@ initialization, export, normalization/reification, evaluation, and checking.
 There is no constructor-field schema, synthetic registration, primitive
 wrapper, or alternative normalization mode. Constructor order and arity must
 travel with the datum. Unit tests guard those boundaries; browser regressions
-poison caches, reorder relations, and replay a datum after evaluating a
+poison caches, rename/reorder atoms, reorder relations, and replay a datum after evaluating a
 same-named constructor with a different field order.
 
 `PRELUDE` supplies language/type definitions for evaluation, not metadata to
 the reifier. Reusing a type's deterministic `_output` method there is permitted;
-its code is not recovered from the datum. Bare constructor names must be
+its code is not recovered from the datum. Public library constructors are included (`string-dict`, `tables`) for evaluation.
+Bare constructor names must be
 unambiguous and bound in the evaluation prelude. Locally scoped constructors,
 name collisions across modules, closures capturing per-value state, and
 effectful or nondeterministic `_output` methods remain outside the supported subset.
@@ -61,7 +64,9 @@ renderer or the distinct command-line `$cli` renderer.
 The two suites now differ in their **corpora**, not their transport or decoder:
 `constructor-data` samples the narrowly specified constructor domain, while
 this suite includes built-in collections, custom printing, and pending forms.
-Neither round-trip suite is an end-to-end test of the graphical renderer.
+The main round trips do not test graphical output. A separate smoke test invokes
+Spyret’s actual `dom-render` module on a cycle and checks that it displays both
+reconstructed source and graph nodes.
 
 ## Running
 
@@ -93,8 +98,8 @@ The CLI also accepts `--out`, `--fuzz`, `--seed`, and `--quiet`. Mocha shrinks
 failing generated examples; the CLI samples without shrinking. Reports
 retain exported and normalized data, A/R/B strings, actual Pyret check results,
 failure stages, desired outcomes, evaluation declarations, seed, and core version.
-Both include `protocol: "spyret-datum-only-v1"` and fingerprints of the actual
-served Pyret/core artifacts. `evaluationContext` replaces the old `decoderContext`
+Both include `protocol: "spyret-datum-root-v2"`, the separately selected `rootId`,
+and fingerprints of the actual served Pyret bundle and all three core JS/CSS assets. `evaluationContext` replaces the old `decoderContext`
 report field: no constructor schema is supplied. A partial or empty run cannot report
 full fidelity. The CLI runs pending cases too and exits 1 for any gap; it does
 not turn a previously observed failure into a passing test.
@@ -106,7 +111,7 @@ including the list of pending requirements, are uploaded with each job's artifac
 
 ## What counts as evidence
 
-The 65 corpus rows exercise numbers, strings, booleans, `nothing`, data,
+The 88 corpus rows exercise numbers, strings, booleans, `nothing`, data,
 objects, tuples, raw arrays, refs, functions, `_output`, sharing, and
 multiplicity. They are representative examples, not exhaustive coverage
 of all values or every printer dispatch. The generator searches recursive
@@ -127,33 +132,83 @@ IDs and their desired expressions remain in the report manifest. Missing
 enabled cases still fail; skipped pending cases never count as verified passes.
 
 A reconstruction failure alone does not prove that information is missing:
-another decoder could succeed. Two additional pending tests require preserving
+another decoder could succeed. Two enabled tests require preserving
 the distinction between `nothing` and `{}`, and between
-`box([raw-array: 1])` and `box([raw-array: 1, 1])`. These pairs currently collide
-in exported data despite distinct `torepr` strings. Their assertions require
-distinguishable data and successful round trips; they do not bless the collision.
+`box([raw-array: 1])` and `box([raw-array: 1, 1])`. These pairs must have distinguishable exported data as well as distinct
+`torepr` strings. Both requirements are now enforced.
 
 An isolation regression also poisons the decoder's constructor cache and
 reorders relation records before replaying an exported `node` datum.
 
-## Building toward the desired behavior
+## Released 6.0.1 coverage and remaining work
 
-With released core 6.0.0, 38 corpus rows and 100 generated values are enabled
-and must round-trip, including zero-argument constructor applications (`zero()`).
-All of these have been re-verified through the shared datum-only harness.
-There are 27 pending value cases plus two pending information-preservation
-tests. These are future requirements, not current support claims.
+The original 65 fixture IDs are preserved. Of their 27 previously pending cases,
+25 now run as required regressions: exact numbers, `nothing`, objects, tuples,
+arrays, references/cycles, sets, dictionaries, and the table inspection marker.
+There are also 23 new library/graph witnesses: **86 enabled inspection cases and
+two pending function cases**, plus 100 generated values per seed.
 
-To implement one, run the pending mode, fix the
-working core relationalizer/reifier, and change the case from `pending(...)`
-to `supported(...)` once it passes. The exact-round-trip assertion stays the
-same. Enable information-preservation tests unconditionally when their gaps are
-fixed. Use the diagnostic CLI to measure all remaining gaps without changing
-their desired outcomes to match today's implementation.
+The recursive generator combines exact/rational/rough/big numbers, strings,
+booleans, `nothing`, constructors, lists/options/either, objects, tuples, arrays,
+and dictionaries. Empty containers, repeated entries and shared nested values
+are explicit branches. Separate bounded branches generate numeric list/tree
+sets and initialized unrestricted reference rings of one to four cells.
 
-The current full measurement has 20 evaluation errors, two mismatches, and
-five explicit reifier rejections. Those are observations of remaining work,
-not expected-success assertions or acceptable end states.
+The supported reference subset has a reachable mutable constructor-field owner
+for each PRef. Arbitrary direct array/object cycles, uninitialized references,
+and arbitrary reference annotations are not claimed. Functions remain blocked
+on [core #596](https://github.com/sidprasad/spytial-core/issues/596). Standalone
+Pyret Row values and function-valued table cells are outside this corpus.
+
+### Additional table contents and behavior evidence
+
+`observations.js` defines **16 separately reported observations: 15 enabled and
+one pending**. They do not
+increase the inspection pass count or change what exact `torepr` equality means:
+
+- Seven table-content checks compare ordered headers and rows, including empty
+  and zero-column tables, repeated rows, structured cells, nested tables and
+  unusual header names.
+- Four table-behavior checks cover shared-array mutation, a reference back to
+  the table, a dictionary back to the table, and public table operations.
+- Three reference-behavior checks distinguish shared from separate cells and
+  check self/two-cell cycles and mutation through aliases.
+- One enabled dictionary-behavior check exercises a cycle; shared-array mutation
+  in an immutable dictionary is a pending stronger requirement.
+
+Each first runs the ordinary round trip, then applies the same observation to
+fresh original and reconstructed values. Observation code is supplied only
+**after reification**. Their inspection strings are compared by a real Pyret
+check; behavior witnesses also check the original against a declared result,
+so two equally ineffective observations cannot establish the promised behavior.
+
+Reports keep these in `assertions`, with their own manifest, per-category scores,
+missing/pending IDs and failures. Missing required, duplicate or failed measured
+observations fail the run even when all ordinary inspection strings match.
+`requiredAssertionsHold` distinguishes enabled checks from the full
+`assertionsHold` claim. The diagnostic CLI runs every pending case/observation;
+it must exit nonzero while the two function gaps and dictionary behavior gap remain.
+
+The dictionary witness is:
+
+```pyret
+block:
+  a = [raw-array: 1]
+  [string-dict: "a", a, "b", a]
+end
+```
+
+Both `entry` tuples in its datum target **one RawArray atom**, so the relational
+model preserves the sharing. Core 6.0.1 prints two array literals in this case.
+Both dictionaries have identical `torepr` strings, but mutating the array under
+key `"a"` changes the value under `"b"` only in the original. This is a core
+source-emission limitation, not missing relational information. Its pending
+observation requires alias preservation; it does not assert that the failure
+should persist.
+
+To promote a remaining case, fix the core implementation, run the unchanged
+exact assertion against a released bundle, then mark it `supported`. Do not
+change the assertion to expect its current failure.
 
 ## Historical boundary on spytial-core 4.4.3
 

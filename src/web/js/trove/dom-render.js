@@ -47,7 +47,10 @@
                 const evaluationContext = { sourceData: dataInstance };
                 const evaluator = new core.Evaluators.SGraphQueryEvaluator();
                 evaluator.initialize(evaluationContext);
-                const r = dataInstance.reify();
+                // The input is visited before its children. Keep the selected
+                // root outside IDataInstance, including for fully cyclic data.
+                const rootId = dataInstance.getAtoms()[0].id;
+                const r = dataInstance.reify(rootId);
                 const layoutSpec = parseLayoutSpecSafe(core, cndSpec);
                 const ENABLE_ALIGNMENT_EDGES = true;
                 const instanceNumber = 0;

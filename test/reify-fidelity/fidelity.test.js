@@ -22,7 +22,8 @@ const assert = require('assert');
 const path = require('path');
 const fc = require('fast-check');
 const { PRELUDE, ROWS, arbitraries } = require('./corpus');
-const { start, runCase, replayDatum, explain } = require('../pyret-round-trip/harness');
+const { OBSERVATIONS } = require('./observations');
+const { start, runCase, runObservation, replayDatum, explain } = require('../pyret-round-trip/harness');
 const { format, writeReport } = require('./report');
 
 const REPORT = process.env.REIFY_REPORT || path.resolve(__dirname, '..', '..', 'build', 'reify-fidelity-report.json');
@@ -36,7 +37,7 @@ if (!Number.isInteger(NUM_RUNS) || NUM_RUNS < 1 || !Number.isInteger(SEED)) {
 describe('Pyret inspection fidelity: working datum-only round trips', function () {
   this.timeout(30 * 60 * 1000);
 
-  const rows = [], errors = [];
+  const rows = [], assertions = [], errors = [];
   let session;
 
   const fixture = (expr, id) => ({ id, expr, prelude: PRELUDE });
@@ -44,7 +45,7 @@ describe('Pyret inspection fidelity: working datum-only round trips', function (
   before(async function () {
     try {
       session = await start();
-      assert.strictEqual(session.metadata.coreVersion, '6.0.0', 'Re-measure after a core upgrade');
+      assert.strictEqual(session.metadata.coreVersion, '6.0.1', 'Re-measure after a core upgrade');
     } catch (e) { errors.push(String(e)); throw e; }
   });
 
@@ -59,9 +60,12 @@ describe('Pyret inspection fidelity: working datum-only round trips', function (
         expectedCases: ROWS.filter((r) => r.expect !== 'out-of-scope').map((r) => `${r.category}/${r.name}`),
         pendingCases: INCLUDE_PENDING ? [] : ROWS.filter(r => r.expect === 'pending').map(r => `${r.category}/${r.name}`),
         desiredCases: ROWS.filter(r => r.expect !== 'out-of-scope'),
+        expectedAssertions: OBSERVATIONS.map(r => r.id),
+        desiredAssertions: OBSERVATIONS,
+        pendingAssertions: INCLUDE_PENDING ? [] : OBSERVATIONS.filter(r => r.expect === 'pending').map(r => r.id),
         evaluationContext: { prelude: PRELUDE, loadedAfterReification: true },
       };
-      const report = writeReport(REPORT, rows, meta);
+      const report = writeReport(REPORT, rows, meta, assertions);
       // eslint-disable-next-line no-console
       console.log('\n' + format(report.summary, meta) + `\n  report: ${REPORT}\n`);
       assert.ok(report.summary.requiredChecksHold, format(report.summary, meta));
@@ -92,6 +96,20 @@ describe('Pyret inspection fidelity: working datum-only round trips', function (
     }
   });
 
+  describe('additional content and behavior observations (separate from inspection)', function () {
+    for (const observation of OBSERVATIONS) {
+      const check = observation.expect === 'pending' && !INCLUDE_PENDING ? it.skip : it;
+      check(`${observation.id}${observation.expect === 'pending' ? ' [TODO: behavior]' : ''}`, async function () {
+        const r = { category: observation.category, name: observation.name, fixtureId: observation.fixtureId,
+          expect: observation.expect, desiredVerdict: observation.desiredVerdict, note: observation.note,
+          ...await runObservation(session, observation) };
+        assertions.push(r);
+        assert.strictEqual(r.verdict, 'pass', explain(r));
+        assert.deepStrictEqual(r.check, { blocks: 1, results: ['success'], errors: 0 });
+      });
+    }
+  });
+
   describe('generated values over the supported forms', function () {
     it(`${NUM_RUNS} fast-check values round-trip${SEED !== undefined ? ` (seed ${SEED})` : ''}`, async function () {
       const { value } = arbitraries(fc);
@@ -116,7 +134,7 @@ describe('Pyret inspection fidelity: working datum-only round trips', function (
       assert.strictEqual(b.verdict, 'pass', explain(b));
       const payload = JSON.parse(JSON.stringify(a.datum));
       payload.relations.reverse();
-      const replay = await replayDatum(session, payload, first.prelude);
+      const replay = await replayDatum(session, payload, first.prelude, a.rootId);
       assert.strictEqual(replay.verdict, 'inspected', explain(replay));
       assert.strictEqual(replay.R, 'replay-pair(9, 2)');
       assert.strictEqual(replay.B, a.A);
@@ -131,15 +149,44 @@ describe('Pyret inspection fidelity: working datum-only round trips', function (
         const PDI = window.spytialcore.PyretDataInstance;
         new PDI({ $name: 'node', dict: { l: 0, r: 0, v: 0 } });
       });
-      const again = await replayDatum(session, payload, PRELUDE);
+      const again = await replayDatum(session, payload, PRELUDE, r.rootId);
       assert.strictEqual(again.verdict, 'inspected', explain(again));
       assert.strictEqual(again.B, r.A);
       assert.strictEqual(again.R, 'node(1, leaf, leaf)');
     });
 
+    it('replays a cycle with renamed atoms and a separate root selection', async function () {
+      const fixtureRow = ROWS.find(r => r.category === 'cycle' && r.name === 'ref-cycle');
+      const r = await runCase(session, fixture(fixtureRow.expr));
+      assert.strictEqual(r.verdict, 'pass', explain(r));
+      const payload = JSON.parse(JSON.stringify(r.datum));
+      const ids = new Map(payload.atoms.map((atom, i) => [atom.id, `opaque-${i}`]));
+      payload.atoms.forEach(atom => { atom.id = ids.get(atom.id); });
+      payload.relations.forEach(relation => relation.tuples.forEach(tuple => {
+        tuple.atoms = tuple.atoms.map(id => ids.get(id));
+      }));
+      payload.types.forEach(type => (type.atoms || []).forEach(atom => { atom.id = ids.get(atom.id); }));
+      payload.atoms.reverse();
+      payload.relations.reverse();
+      const replay = await replayDatum(session, payload, PRELUDE, ids.get(r.rootId));
+      assert.strictEqual(replay.verdict, 'inspected', explain(replay));
+      assert.strictEqual(replay.B, r.A);
+      assert.ok(replay.received.atoms.every(atom => atom.id.startsWith('opaque-')));
+    });
+
+    it('renders a cycle through Spyret’s actual dom-render module', async function () {
+      const initialized = await session.ide.page.evaluate(p => window.__reifyFidelity.init(p),
+        'import dom-render as DR\n' + PRELUDE);
+      assert.ok(initialized.ok, initialized.error);
+      const expr = ROWS.find(r => r.category === 'cycle' && r.name === 'ref-cycle').expr;
+      const rendered = await session.ide.page.evaluate(e => window.__reifyFidelity.renderExpression(e), expr);
+      assert.strictEqual(rendered.verdict, 'rendered', JSON.stringify(rendered));
+      assert.ok(rendered.nodes > 0);
+      assert.ok(rendered.R.includes('!{'), 'The diagram must display source that reconstructs the cycle');
+    });
+
     for (const [left, right] of [['nothing', '{}'], ['box([raw-array: 1])', 'box([raw-array: 1, 1])']]) {
-      const check = INCLUDE_PENDING ? it : it.skip;
-      check(`TODO: preserves the distinction between ${left} and ${right}`, async function () {
+      it(`preserves the distinction between ${left} and ${right}`, async function () {
         const a = await runCase(session, fixture(left));
         const b = await runCase(session, fixture(right));
         assert.ok(a.datum && b.datum, `${explain(a)}\n${explain(b)}`);

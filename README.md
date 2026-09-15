@@ -169,7 +169,7 @@ Spyret's actual Pyret runtime, see
 the datum without a producer cache, evaluates the reified expression in fresh
 Pyret interactions, and compares `torepr` strings with an actual Pyret check.
 There is no replacement relationalizer. The editor and PR CI use the released
-spytial-core **6.0.0** CDN bundles. Both the fixed regression suite and the
+spytial-core **6.0.1** CDN bundles. Both the fixed regression suite and the
 strict measurement require exact matches for every planned constructor-data
 fixture; any mismatch or incomplete run fails. The documented 4.4.3 failures
 are historical measurements, not accepted failures in the current suite.
@@ -182,12 +182,15 @@ npm run constructor-data-report
 `test/reify-fidelity/` extends the corpus to broader Pyret value forms using
 the **same** `test/pyret-round-trip/` harness as the constructor suite. Both
 pass live values directly to the production relationalizer, use default JSON
-normalization, and reify with empty constructor caches. There is no primitive
+normalization, and reify with empty constructor caches and a separate root ID. There is no primitive
 adapter or supplied field schema; declarations are loaded only after reification
 to evaluate the completed expression. Every in-scope test specifies the desired exact round trip;
-missing behavior and information-preservation requirements are visibly pending,
+the two remaining function cases are visibly pending,
 not passing tests that require current failures to persist. The diagnostic CLI
-measures all cases and exits nonzero on any gap. See
+measures all cases and exits nonzero on any gap. Tables also have separate content
+and behavior checks: matching a printed table marker does not establish those properties.
+A separate pending check records a newly measured limitation in preserving shared
+arrays inside immutable dictionaries. See
 [test/reify-fidelity/README.md](test/reify-fidelity/README.md).
 
 ```

@@ -55,6 +55,40 @@ describe('Desired fidelity report validity', function () {
     assert.strictEqual(summarize([{ source: 'generated', verdict: 'mismatch' }], { numRuns: 1 }).fidelityHolds, false);
   });
 
+  it('requires separate content/behavior evidence even when inspection matches', function () {
+    const meta = { expectedCases: ['data/tree'], expectedAssertions: ['table-content/rows'] };
+    const observation = { id: 'table-content/rows', category: 'table-content', verdict: 'pass' };
+    const good = summarize([supported], meta, [observation]);
+    assert.strictEqual(good.requiredChecksHold, true);
+    assert.strictEqual(summarize([supported], meta, []).complete, false);
+    assert.strictEqual(summarize([supported], meta, [{ ...observation, verdict: 'mismatch' }]).complete, true);
+    assert.strictEqual(good.counts.corpus, 1, 'Observation checks must not inflate inspection counts');
+    assert.deepStrictEqual(good.assertionScores, [{ category: 'table-content', pass: 1, total: 1 }]);
+    for (const observations of [[], [observation, observation], [{ ...observation, id: 'unexpected' }],
+      [{ ...observation, verdict: 'mismatch' }]]) {
+      const summary = summarize([supported], meta, observations);
+      assert.strictEqual(summary.corpusPassRate, 1);
+      assert.strictEqual(summary.requiredChecksHold, false);
+      assert.strictEqual(summary.fidelityHolds, false);
+    }
+    assert.strictEqual(summarize([supported], { ...meta, expectedAssertions: [observation.id, observation.id] },
+      [observation]).requiredChecksHold, false);
+  });
+
+  it('keeps pending observations visible and never excuses their measured failures', function () {
+    const id = 'dictionary-behavior/shared-array';
+    const meta = { expectedAssertions: [id], pendingAssertions: [id] };
+    const pending = summarize([supported], meta);
+    assert.strictEqual(pending.requiredChecksHold, true);
+    assert.strictEqual(pending.assertionsHold, false);
+    assert.strictEqual(pending.complete, false);
+    assert.strictEqual(pending.fidelityHolds, false);
+    assert.deepStrictEqual(pending.pendingAssertions, [id]);
+    assert.strictEqual(summarize([supported], meta, [{ id, verdict: 'mismatch' }]).requiredChecksHold, false);
+    assert.strictEqual(summarize([supported], meta, [{ id, verdict: 'pass' }]).fidelityHolds, true);
+    assert.strictEqual(summarize([supported], { ...meta, pendingAssertions: ['unknown'] }).requiredChecksHold, false);
+  });
+
   it('does not report success after an isolation or orchestration failure', function () {
     const summary = summarize([supported], { runErrors: ['cache isolation failed'] });
     assert.strictEqual(summary.requiredChecksHold, false);

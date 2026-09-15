@@ -6,7 +6,7 @@ const { fixtures } = require('./corpus');
 const { start, runCase } = require('../pyret-round-trip/harness');
 const { writeReport } = require('./report');
 
-describe('Spyret working relationalizer/reifier: released 6.0.0', function () {
+describe('Spyret working relationalizer/reifier: released 6.0.1', function () {
   this.timeout(30 * 60 * 1000);
   const cases = fixtures();
   const rows = [], errors = [];
@@ -14,7 +14,7 @@ describe('Spyret working relationalizer/reifier: released 6.0.0', function () {
   before(async function () {
     try {
       session = await start();
-      assert.strictEqual(session.metadata.coreVersion, '6.0.0', 'Re-measure after a core upgrade');
+      assert.strictEqual(session.metadata.coreVersion, '6.0.1', 'Re-measure after a core upgrade');
     } catch (e) { errors.push(String(e)); throw e; }
   });
   afterEach(function () {
@@ -54,7 +54,7 @@ describe('Spyret working relationalizer/reifier: released 6.0.0', function () {
     await session.ide.decoder.evaluate(() => {
       new window.spytialcore.PyretDataInstance({ $name: 'duo', dict: { zebra: 0, alpha: 0 } });
     });
-    const r = await session.ide.decoder.evaluate(d => window.__reifyFidelity.reifyWorkingDatum(d), replay);
+    const r = await session.ide.decoder.evaluate((d, root) => window.__reifyFidelity.reifyWorkingDatum(d, root), replay, row.rootId);
     assert.strictEqual(r.verdict, 'reified', JSON.stringify(r));
     assert.strictEqual(r.R, row.R);
     assert.strictEqual(r.R, 'duo(9, 2)');
