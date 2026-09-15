@@ -11,12 +11,22 @@ describe('static client-only IDE', function() {
   let server, ide, origin;
   const requests = [], errors = [];
   before(async function() {
-    server = createStaticServer(path.resolve(__dirname, '../../build/static'));
+    const directory = path.resolve(__dirname, '../../build/static');
+    const {basePath} = JSON.parse(fs.readFileSync(path.join(directory, 'static-config.json'), 'utf8'));
+    server = createStaticServer(directory, basePath);
     server.on('request', req => requests.push({url: req.url, method: req.method}));
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    origin = 'http://127.0.0.1:' + server.address().port;
+    origin = 'http://127.0.0.1:' + server.address().port + basePath;
     console.log('    Static test origin: ' + origin);
     ide = await openIde(origin, 1, {configurePage: async page => {
+      // The offline tests must remain deterministic when testing an artifact
+      // built with real deployment credentials (for example in Pages CI).
+      // Ignore the HTML's initial client ID; the Google simulation sets it later.
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(window, 'GOOGLE_CLIENT_ID', {configurable: true, set() {
+          Object.defineProperty(window, 'GOOGLE_CLIENT_ID', {configurable: true, writable: true, value: ''});
+        }});
+      });
       page.on('pageerror', error => console.error('    Browser error:', String(error)));
       page.on('requestfailed', request => console.error('    Request failed:', request.url(), request.failure().errorText));
       page.on('console', msg => { if (msg.type() === 'error') { console.error('    Browser console:', msg.text().slice(0, 300)); } });
@@ -97,6 +107,13 @@ describe('static client-only IDE', function() {
       window.apiKey = 'test-api-key';
       const state = window.fakeGoogle = {file: null, uploads: [], creates: 0, token: null, failUpload: true};
       function request(result) { return {execute(callback) { setTimeout(() => callback(typeof result === 'function' ? result() : result), 0); }}; }
+      const realFetch = window.fetch.bind(window);
+      window.fetch = (url, options) => {
+        if (url.startsWith('https://www.googleapis.com/drive/v2/files/saved-file?')) {
+          return Promise.resolve(new Response(JSON.stringify(state.file), {status: 200}));
+        }
+        return realFetch(url, options);
+      };
       const drive = {
         files: {
           list: () => request({items: [{id: 'folder'}]}),
@@ -126,7 +143,7 @@ describe('static client-only IDE', function() {
       };
       window.google = {picker: {}, accounts: {oauth2: {
         initTokenClient: config => ({requestAccessToken() {
-          config.callback({access_token: 'simulated-token', expires_in: 3600});
+          config.callback({access_token: 'simulated-token', expires_in: 3600, scope: config.scope});
         }})
       }}};
       await BrowserGoogleAuth.load();
@@ -153,5 +170,13 @@ describe('static client-only IDE', function() {
     assert.strictEqual(await ide.page.$eval('#save-status', el => el.textContent), 'Saved to Drive');
     const persisted = await ide.page.evaluate(() => JSON.stringify({...localStorage, ...sessionStorage}));
     assert.ok(!persisted.includes('simulated-token'));
+    await ide.page.click('#shareContainer button');
+    await ide.page.waitForFunction(() => document.querySelector('#promptModal').style.display !== 'none' &&
+      document.querySelector('#promptModal .auto-highlight'));
+    const links = await ide.page.$$eval('#promptModal .auto-highlight', inputs => inputs.map(input => input.value));
+    assert.strictEqual(links[0], origin + '/editor/#share=saved-file');
+    assert.strictEqual(links[1], 'https://drive.google.com/file/d/saved-file/view');
+    assert.match(await ide.page.$eval('#promptModal', el => el.textContent), /Recipients need access/);
+    await ide.page.click('#promptModal .submit');
   });
 });

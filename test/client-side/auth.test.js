@@ -34,13 +34,23 @@ describe('browser Google authorization', function() {
     assert.strictEqual(h.requested(), 0);
     const grant = h.auth.authorize(false);
     assert.strictEqual(h.requested(), 1, 'Popup must start in the user click stack');
-    h.config().callback({access_token: 'access-only', expires_in: 3600});
+    h.config().callback({access_token: 'access-only', expires_in: 3600, scope: h.config().scope});
     await grant;
     assert.strictEqual(h.auth.current().access_token, 'access-only');
     h.advance(3600000);
     assert.strictEqual(await h.auth.authorize(true), null);
     assert.strictEqual(h.googleToken(), null);
     assert.strictEqual(h.requested(), 1);
+  });
+  it('requires the read and save grants instead of accepting partial consent', async function() {
+    const h = authHarness();
+    await h.auth.load();
+    assert.match(h.config().scope, /drive\.readonly/);
+    const grant = h.auth.authorize(false);
+    h.config().callback({access_token: 'partial', expires_in: 3600, scope: 'https://www.googleapis.com/auth/drive.file'});
+    await assert.rejects(Promise.resolve(grant), /not fully granted/);
+    assert.ok(!h.auth.current());
+    assert.ok(!h.googleToken());
   });
   it('settles cancellation and denied consent, allowing a later retry', async function() {
     const h = authHarness();
@@ -53,40 +63,8 @@ describe('browser Google authorization', function() {
     await assert.rejects(Promise.resolve(denied), /access_denied/);
     assert.ok(!h.auth.current());
     const retry = h.auth.authorize(false);
-    h.config().callback({access_token: 'retry', expires_in: 3600});
+    h.config().callback({access_token: 'retry', expires_in: 3600, scope: h.config().scope});
     assert.strictEqual((await retry).access_token, 'retry');
-  });
-});
-
-describe('client-side publishing', function() {
-  function driveHarness(failPermission) {
-    const calls = [];
-    const drive = {files: {
-      list: () => Q({items: [{id: 'folder'}]}),
-      get: () => Q({id: 'original', title: 'Example', mimeType: 'text/plain'}),
-      copy: () => { calls.push('copy'); return Q({id: 'copy', title: 'Example published', mimeType: 'text/plain'}); },
-      trash: () => { calls.push('trash'); return Q({}); }
-    }, permissions: {insert: () => {
-      calls.push('permission');
-      return failPermission ? Q.reject(new Error('Sharing prohibited')) : Q({});
-    }}};
-    const context = {Q, console, CLIENT_SIDE: true, BrowserGoogleAuth: {current: () => ({access_token: 'token'})},
-      gwrap: {load: args => { args.callback(drive); return Q(drive); }}};
-    context.window = context;
-    vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../src/web/js/google-apis/drive.js'), 'utf8'), context);
-    return {calls, api: context.createProgramCollectionAPI('test', true)};
-  }
-  it('publishes directly through Drive with verified public permissions', async function() {
-    const h = driveHarness(false);
-    const p = await (await h.api).api.getFileById('original');
-    assert.strictEqual((await p.makeShareCopy()).getUniqueId(), 'copy');
-    assert.deepStrictEqual(h.calls, ['copy', 'permission']);
-  });
-  it('fails publishing and cleans up the copy when public access is denied', async function() {
-    const h = driveHarness(true);
-    const p = await (await h.api).api.getFileById('original');
-    await assert.rejects(Promise.resolve(p.makeShareCopy()), /Sharing prohibited/);
-    assert.deepStrictEqual(h.calls, ['copy', 'permission', 'trash']);
   });
 });
 

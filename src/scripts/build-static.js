@@ -65,6 +65,7 @@ function build() {
   fs.mkdirSync(path.join(output, 'editor'));
   fs.writeFileSync(path.join(output, 'index.html'), html);
   fs.writeFileSync(path.join(output, 'editor/index.html'), html);
+  fs.writeFileSync(path.join(output, '.nojekyll'), '');
   // Used only by the local preview server to mount a configured path prefix.
   fs.writeFileSync(path.join(output, 'static-config.json'), JSON.stringify({basePath: config.BASE_URL}));
   console.log('Static IDE built in build/static. Run npm start to preview.');

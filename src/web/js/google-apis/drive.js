@@ -7,19 +7,26 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
   var FOLDER_MIME = "application/vnd.google-apps.folder";
   var BACKREF_KEY = "originalProgram";
 
-  function readClientFile(id, publicRead) {
+  function readClientFile(id, publicRead, resourceKey, metadata) {
     function read(authenticated) {
       var token = BrowserGoogleAuth.current();
       var headers = authenticated && token ? {Authorization: 'Bearer ' + token.access_token} : {};
-      return Q(fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) +
-        '?alt=media&key=' + encodeURIComponent(apiKey), {headers: headers})).then(function(response) {
+      if (resourceKey) { headers['X-Goog-Drive-Resource-Keys'] = id + '/' + resourceKey; }
+      return Q(fetch('https://www.googleapis.com/drive/' + (metadata ? 'v2' : 'v3') + '/files/' + encodeURIComponent(id) +
+        '?' + (metadata ? '' : 'alt=media&') + 'key=' + encodeURIComponent(apiKey), {headers: headers})).then(function(response) {
         if (!response.ok) {
           if (authenticated && response.status === 401) { BrowserGoogleAuth.clear(); }
-          var error = new Error('Google Drive could not read this file (' + response.status + ').');
+          var message = 'Google Drive could not read this file (' + response.status + ').';
+          if (response.status === 401) { message = 'Reconnect to Google Drive to open this file.'; }
+          if (response.status === 403 || response.status === 404) {
+            message = authenticated ? 'Cannot open this Drive file. Use an account with access, or ask the owner to share it with you. The file may also have been deleted.' :
+              'Connect to Google Drive with an account that has access to this file.';
+          }
+          var error = new Error(message);
           error.status = response.status;
           throw error;
         }
-        return response.text();
+        return metadata ? response.json() : response.text();
       });
     }
     if (!publicRead) { return read(true); }
@@ -83,8 +90,12 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
         getUniqueId: function() {
           return googFileObject.id;
         },
+        getResourceKey: function() {
+          return googFileObject.resourceKey;
+        },
         getExternalURL: function() {
-          return googFileObject.alternateLink;
+          return googFileObject.alternateLink || 'https://drive.google.com/file/d/' + encodeURIComponent(googFileObject.id) + '/view' +
+            (googFileObject.resourceKey ? '?resourcekey=' + encodeURIComponent(googFileObject.resourceKey) : '');
         },
         getShares: function() {
           return drive.files.list({
@@ -96,7 +107,7 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
             });
         },
         getContents: function() {
-          if (window.CLIENT_SIDE) { return readClientFile(googFileObject.id, false); }
+          if (window.CLIENT_SIDE) { return readClientFile(googFileObject.id, false, googFileObject.resourceKey); }
           var baseUrl = "https://www.googleapis.com/drive/v3/files/" + googFileObject.id + "?alt=media&source=download";
           return Q($.ajax(baseUrl, {
             method: "get",
@@ -116,23 +127,7 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
         },
         makeShareCopy: function() {
           if (window.CLIENT_SIDE) {
-            return shareCollection.then(function(c) {
-              return drive.files.copy({ fileId: googFileObject.id, resource: {
-                title: googFileObject.title + ' published', parents: [{id: c.id}],
-                properties: [
-                  {key: BACKREF_KEY, value: googFileObject.id, visibility: 'PRIVATE'},
-                  {key: BACKREF_KEY + 'Flag', value: 'true', visibility: 'PRIVATE'}
-                ]
-              }});
-            }).then(function(copy) {
-              // Only report publishing success once Google permits public reads.
-              return drive.permissions.insert({fileId: copy.id, resource: {
-                role: 'reader', type: 'anyone', withLink: true
-              }}).then(function() { return fileBuilder(copy); }, function(error) {
-                // Keep an unsuccessful publish from appearing as a public copy.
-                return drive.files.trash({fileId: copy.id}).catch(function() {}).then(function() { throw error; });
-              });
-            });
+            return Q.reject(new Error('Use Share to link to this file and manage access in Google Drive.'));
           }
           var newFile = shareCollection.then(function(c) {
             return Q($.ajax({
@@ -199,7 +194,13 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
       getCollectionFolderId: function() {
         return baseCollection.then(function(bc) { return bc.id; });
       },
-      getFileById: function(id) {
+      getFileById: function(id, resourceKey) {
+        if (window.CLIENT_SIDE) {
+          return readClientFile(id, false, resourceKey, true).then(function(file) {
+            file.resourceKey = file.resourceKey || resourceKey;
+            return fileBuilder(file);
+          });
+        }
         return drive.files.get({fileId: id}).then(fileBuilder);
       },
       makeUrlFile: function(url) {
@@ -215,20 +216,18 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
           return files.filter(function(f) { return f.getName() === name; });
         });
       },
-      getSharedFileById: function(id) {
+      getSharedFileById: function(id, resourceKey) {
         if (window.CLIENT_SIDE) {
           // Read as the recipient, or anonymously with the public API key.
-          return drive.files.get({fileId: id}, true).catch(function(error) {
-            if (BrowserGoogleAuth.current()) { return drive.files.get({fileId: id}); }
-            throw error;
-          }).then(function(file) {
+          return readClientFile(id, true, resourceKey, true).then(function(file) {
+            file.resourceKey = file.resourceKey || resourceKey;
             var shared = makeFile(file, 'text/plain', 'arr');
             shared.shared = true;
             shared.getOriginal = function() { return drive.properties.get({
               fileId: id, propertyKey: BACKREF_KEY, visibility: 'PRIVATE'
             }); };
             shared.getContents = function() {
-              return readClientFile(id, true);
+              return readClientFile(id, true, file.resourceKey);
             };
             return shared;
           });
@@ -304,7 +303,7 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
     };
 
     if(!publicOnly) {
-      var shareCollection = findOrCreateDirectory(collectionName + ".shared");
+      var shareCollection = window.CLIENT_SIDE ? Q(null) : findOrCreateDirectory(collectionName + ".shared");
       var cacheCollection = findOrCreateCacheDirectory(collectionName + ".compiled");
     }
     else {

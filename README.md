@@ -28,7 +28,9 @@ Enable the Drive API, Google Picker API, and Sheets API in that project. Configu
 
 Run `npm run build` again after changing configuration. The build reads `.env.static`, with explicit environment variables taking precedence; it does not use the legacy server `.env` for public configuration.
 
-Click **Connect to Google Drive** to authorize access. The normal scope is `drive.file`: files created by this app or selected through its picker. File → My Programs opens Google Picker. Save, Save a copy, Rename, and Publish call Google directly. Enable Google Sheets access from the Pyret menu when needed.
+Click **Connect to Google Drive** to authorize access. The app requests `drive.file` to save files created by this app or selected through its picker, and `drive.readonly` to open existing files and shared links that your account can read. File → My Programs opens Google Picker. Save, Save a copy, Rename, and Share call Google directly. Enable Google Sheets access from the Pyret menu when needed.
+
+Declare both Drive scopes on the consent screen. `drive.readonly` is a restricted scope and public distribution requires Google's corresponding app verification. It allows direct opening by file ID; `drive.file` alone would require recipients to select private files in Picker first. See [Google's Drive scope requirements](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
 
 Access tokens stay in memory. After token expiry or page reload, reconnect through the button. Reconnecting preserves local edits; saving uploads them only after authorization. The status label distinguishes local recovery from a completed Drive save. Disconnect clears the in-memory token; it does not revoke the app's grant in your Google account.
 
@@ -36,7 +38,9 @@ See [Google's browser token model](https://developers.google.com/identity/oauth2
 
 ## Sharing and images
 
-Publish creates a copy on Drive and requests public read access. Publishing succeeds only if Google accepts that permission. Recipients fetch content directly from Google, either publicly or with their own authorized access. Legacy links that relied on the server fetching with the owner's credentials are unsupported. Files needing a Drive resource key may require selecting the file in Google Picker first.
+**Share** saves the current file and provides an IDE link to its latest saved contents. It keeps the file's Drive permissions. Use the Drive link in the dialog to grant access to particular people or enable “Anyone with the link” in Google's Share dialog. A recipient opens the IDE link and connects with a Google account that has access. Public files can also open without signing in. A denied or deleted file shows an access error. Edits to a shared program stay local until the recipient uses **Save a copy**.
+
+Links carry a `resourcekey` when Drive provides one; it is forwarded for both metadata and content reads. Recipients fetch directly from Google with their own access. Old owner-credential links work only if the underlying file's Drive permissions allow the recipient to read it. No owner's credentials, refresh tokens, or sharing database are involved.
 
 Images selected from Drive are embedded as data URLs in the program, so reading them later needs no credentials or image proxy. Arbitrary external image URLs must allow browser access (CORS). Large embedded images increase program and draft sizes.
 
@@ -48,16 +52,18 @@ For a deployment such as `https://example.com/spyret/`, set `STATIC_BASE_PATH=/s
 
 This is a **client-only application**, not a fully offline distribution: it still loads pinned Spytial assets and Google Charts from CDNs, and Google features and remote imports require network access. Node and Make are build-time tools only.
 
-### Docker
+### GitHub Pages
 
-The Docker image builds the app and serves static files with nginx:
+The included **Deploy static IDE to GitHub Pages** workflow builds, tests, and uploads the static files when run manually. In the GitHub repository:
 
-```sh
-docker build -t spyret-ide:static .
-docker run --rm -p 4999:80 spyret-ide:static
-```
+1. Set Settings → Pages → Source to **GitHub Actions**.
+2. Add repository Actions variables `GOOGLE_CLIENT_ID`, `GOOGLE_API_KEY`, and `GOOGLE_APP_ID` with the public values above.
+3. Register `https://sidprasad.github.io` as a Google authorized JavaScript origin (no `/spyret` suffix), and allow the deployed pages in the browser API key's HTTP referrer restrictions.
+4. Run **Deploy static IDE to GitHub Pages** from Actions. The workflow derives the asset and link prefix from Pages configuration.
 
-Supply public Google configuration with `--build-arg GOOGLE_CLIENT_ID=...`, `--build-arg GOOGLE_API_KEY=...`, and `--build-arg GOOGLE_APP_ID=...`. These are build-time settings, not runtime secrets.
+For `https://sidprasad.github.io/spyret/`, host this project in a repository named `spyret`. The current `sidprasad/spyret-ide` repository would instead use `/spyret-ide/`. Another option is to place a `/spyret` build in the `spyret` directory of the `sidprasad.github.io` user-site repository.
+
+To preview the intended path locally, run `STATIC_BASE_PATH=/spyret npm run build`, then `npm start` and open `http://localhost:4999/spyret/editor/`. Docker is not needed. See [GitHub's custom Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 
 ## Tests
 
@@ -66,7 +72,7 @@ npm run build
 npm run test:client
 ```
 
-The client tests serve the built files with a plain static server and run the actual compiler and Spytial in Chrome. They also cover local draft recovery and simulated Google authorization/publishing behavior. They do not use a real Google account. Set `CHROME_BINARY` if Chrome is installed at a nonstandard location. See `test/client-side/`.
+The client tests serve the built files at their configured path with a plain static server and run the actual compiler and Spytial in Chrome. They also cover local draft recovery, simulated Google authorization, and public/private sharing with allowed and denied recipients. They do not use a real Google account. Set `CHROME_BINARY` if Chrome is installed at a nonstandard location. See `test/client-side/`.
 
 The existing runtime regression suites remain available:
 

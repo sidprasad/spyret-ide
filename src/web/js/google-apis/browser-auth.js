@@ -2,7 +2,9 @@
 (function() {
   if (!window.CLIENT_SIDE) { return; }
   var ready, token, expiresAt = 0, pending, tokenClient, expiryTimer;
-  var scopes = 'https://www.googleapis.com/auth/drive.file';
+  // drive.file permits saves; drive.readonly lets a recipient open an existing
+  // shared link without first selecting that file in Google Picker.
+  var scopes = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
 
   function announce() {
     window.dispatchEvent(new CustomEvent('google-auth-changed'));
@@ -52,6 +54,11 @@
           pending = null;
           if (response.error || !response.access_token) {
             request.reject(new Error(response.error_description || response.error || 'Google authorization failed.'));
+            return;
+          }
+          var granted = (response.scope || '').split(/\s+/);
+          if (!scopes.split(' ').every(function(scope) { return granted.indexOf(scope) >= 0; })) {
+            request.reject(new Error('Google access was not fully granted. Reconnect and allow the requested Drive permissions and Sheets permission if enabled.'));
             return;
           }
           token = { access_token: response.access_token };

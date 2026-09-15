@@ -336,4 +336,4 @@ function pageRuntime() {
   return true;
 }
 
-module.exports = { ensureServer, openIde, pageRuntime };
+module.exports = { ensureServer, openIde, pageRuntime, findChrome };

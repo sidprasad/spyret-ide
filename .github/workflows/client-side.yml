@@ -23,4 +23,6 @@ jobs:
           git config --global url.https://github.com/.insteadOf ssh://git@github.com/
           npm ci --ignore-scripts
       - run: npm run build
+        env:
+          STATIC_BASE_PATH: /spyret
       - run: npm run test:client

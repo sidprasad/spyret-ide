@@ -1,9 +1,10 @@
 /* The static editor's Drive session and local recovery. No credentials are persisted. */
 module.exports = function(options) {
   var query = new URLSearchParams(location.hash.slice(1));
-  var file = null, dirty = false, attached = false, saving = null;
+  var file = null, dirty = false, attached = false, saving = null, connecting = false;
   var name = 'Untitled', persisted = true;
   var programId = query.get('program'), shareId = query.get('share');
+  var resourceKey = query.get('resourcekey');
   var namespace = 'spyret-draft:' + window.APP_BASE_URL + ':';
   if (!programId && !shareId && !query.has('draft')) {
     query.set('draft', window.crypto.randomUUID());
@@ -46,9 +47,13 @@ module.exports = function(options) {
       return Q(fallback);
     }
     if (shareId) {
-      return BrowserGoogleAuth.api.getSharedFileById(shareId).then(adopt)
-        .then(function(p) { return p.getContents(); }).catch(function(error) {
-          setStatus('Could not open shared program. Connect with an account that has access.');
+      return BrowserGoogleAuth.api.getSharedFileById(shareId, resourceKey)
+        .then(function(p) { return p.getContents().then(function(contents) {
+          adopt(p);
+          setStatus('Viewing a shared program');
+          return contents;
+        }); }).catch(function(error) {
+          setStatus(error.message || 'Could not open shared program. Connect with an account that has access.');
           return fallback;
         });
     }
@@ -70,30 +75,29 @@ module.exports = function(options) {
     $('.loginOnly').toggle(connected);
     $('.logoutOnly').toggle(!connected);
     $('#publishli').toggle(connected && !!file && !file.shared);
-    $('#connectButton').prop('disabled', false).text('Connect to Google Drive');
+    $('#connectButton').prop('disabled', connecting).text(connecting ? 'Connecting…' : 'Connect to Google Drive');
     $('#connectButtonli').removeAttr('disabled');
     if (connected) { $('#filemenuContents .disabled').removeClass('disabled'); }
     else if (dirty) { persist(); }
     else { setStatus('Local editing — connect to save to Drive'); }
   }
   function connect(full) {
+    connecting = true;
     var authorization = BrowserGoogleAuth.authorize(false, full);
     $('#connectButton').prop('disabled', true).text('Connecting…');
     return authorization.then(function() {
       return BrowserGoogleAuth.getAPI();
-    }).then(function(storage) {
-      return storage.collection;
     }).then(function() {
       authUI();
       $('#username').text('Google Drive connected');
       // Reconnect must never replace locally edited contents with a remote copy.
-      var requested = programId ? BrowserGoogleAuth.api.getFileById(programId) :
-        shareId ? BrowserGoogleAuth.api.getSharedFileById(shareId) : Q(null);
+      var requested = programId ? BrowserGoogleAuth.api.getFileById(programId, resourceKey) :
+        shareId ? BrowserGoogleAuth.api.getSharedFileById(shareId, resourceKey) : Q(null);
       return requested.then(function(p) {
         if (!p) { return; }
-        adopt(p);
         if (!dirty) {
           return p.getContents().then(function(contents) {
+            adopt(p);
             if (!dirty) {
               CPO.editor.cm.setValue(contents);
               CPO.editor.cm.clearHistory();
@@ -102,11 +106,16 @@ module.exports = function(options) {
               setStatus(p.shared ? 'Viewing a shared program' : 'Loaded from Drive');
             }
           });
-        }
+        } else { adopt(p); }
       });
+    }).finally(function() {
+      connecting = false;
+      authUI();
     }).catch(function(error) {
-      window.stickError(error.message || 'Could not connect to Google Drive.');
-    }).finally(authUI);
+      var message = error.message || 'Could not connect to Google Drive.';
+      setStatus(message);
+      window.stickError(message);
+    });
   }
   function save(newName) {
     if (saving) { return newName === undefined ? saving : saving.then(function() { return save(newName); }); }
@@ -120,7 +129,7 @@ module.exports = function(options) {
     var oldKey = key;
     var target = newName !== undefined || (!file && !programId && !shareId) ?
       BrowserGoogleAuth.api.createFile(newName || name) :
-      file ? Q(file) : programId ? BrowserGoogleAuth.api.getFileById(programId) :
+      file ? Q(file) : programId ? BrowserGoogleAuth.api.getFileById(programId, resourceKey) :
       Q.reject(new Error('Use Save a copy to save changes to a shared program.'));
     setStatus('Saving to Drive…');
     saving = target.then(function(p) {
@@ -128,7 +137,9 @@ module.exports = function(options) {
       adopt(p);
       programId = p.getUniqueId();
       shareId = null;
-      history.replaceState(null, '', '#program=' + encodeURIComponent(programId));
+      resourceKey = p.getResourceKey();
+      history.replaceState(null, '', '#program=' + encodeURIComponent(programId) +
+        (resourceKey ? '&resourcekey=' + encodeURIComponent(resourceKey) : ''));
       key = namespace + 'program:' + programId;
       persist();
       if (persisted && oldKey !== key) {
@@ -181,6 +192,7 @@ module.exports = function(options) {
       file = null;
       programId = null;
       shareId = null;
+      resourceKey = null;
       name = selected.name;
       var id = window.crypto.randomUUID();
       key = namespace + 'draft:' + id;
@@ -204,7 +216,9 @@ module.exports = function(options) {
     },
     onSelect: function(files, googlePicker) {
       persist();
-      location.assign(window.APP_BASE_URL + '/editor/#program=' + encodeURIComponent(files[0][googlePicker.Document.ID]));
+      var picked = files[0];
+      location.assign(window.APP_BASE_URL + '/editor/#program=' + encodeURIComponent(picked[googlePicker.Document.ID]) +
+        (picked.resourceKey ? '&resourcekey=' + encodeURIComponent(picked.resourceKey) : ''));
     },
     onError: function(error) { window.stickError(String(error)); }
   });
