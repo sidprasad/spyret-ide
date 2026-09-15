@@ -7,6 +7,28 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
   var FOLDER_MIME = "application/vnd.google-apps.folder";
   var BACKREF_KEY = "originalProgram";
 
+  function readClientFile(id, publicRead) {
+    function read(authenticated) {
+      var token = BrowserGoogleAuth.current();
+      var headers = authenticated && token ? {Authorization: 'Bearer ' + token.access_token} : {};
+      return Q(fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) +
+        '?alt=media&key=' + encodeURIComponent(apiKey), {headers: headers})).then(function(response) {
+        if (!response.ok) {
+          if (authenticated && response.status === 401) { BrowserGoogleAuth.clear(); }
+          var error = new Error('Google Drive could not read this file (' + response.status + ').');
+          error.status = response.status;
+          throw error;
+        }
+        return response.text();
+      });
+    }
+    if (!publicRead) { return read(true); }
+    return read(false).catch(function(error) {
+      if (BrowserGoogleAuth.current()) { return read(true); }
+      throw error;
+    });
+  }
+
   function createAPI(baseCollection) {
     function makeSharedFile(googFileObject, fetchFromGoogle) {
       return {
@@ -74,11 +96,12 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
             });
         },
         getContents: function() {
+          if (window.CLIENT_SIDE) { return readClientFile(googFileObject.id, false); }
           var baseUrl = "https://www.googleapis.com/drive/v3/files/" + googFileObject.id + "?alt=media&source=download";
           return Q($.ajax(baseUrl, {
             method: "get",
             dataType: 'text',
-            headers: {'Authorization': 'Bearer ' + gapi.auth.getToken().access_token }
+            headers: {'Authorization': 'Bearer ' + (gapi.client.getToken() || {}).access_token }
           })).then(function(response) {
             return response;
           });
@@ -92,6 +115,25 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
           }).then(fileBuilder);
         },
         makeShareCopy: function() {
+          if (window.CLIENT_SIDE) {
+            return shareCollection.then(function(c) {
+              return drive.files.copy({ fileId: googFileObject.id, resource: {
+                title: googFileObject.title + ' published', parents: [{id: c.id}],
+                properties: [
+                  {key: BACKREF_KEY, value: googFileObject.id, visibility: 'PRIVATE'},
+                  {key: BACKREF_KEY + 'Flag', value: 'true', visibility: 'PRIVATE'}
+                ]
+              }});
+            }).then(function(copy) {
+              // Only report publishing success once Google permits public reads.
+              return drive.permissions.insert({fileId: copy.id, resource: {
+                role: 'reader', type: 'anyone', withLink: true
+              }}).then(function() { return fileBuilder(copy); }, function(error) {
+                // Keep an unsuccessful publish from appearing as a public copy.
+                return drive.files.trash({fileId: copy.id}).catch(function() {}).then(function() { throw error; });
+              });
+            });
+          }
           var newFile = shareCollection.then(function(c) {
             return Q($.ajax({
               url: "/create-shared-program",
@@ -174,6 +216,23 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
         });
       },
       getSharedFileById: function(id) {
+        if (window.CLIENT_SIDE) {
+          // Read as the recipient, or anonymously with the public API key.
+          return drive.files.get({fileId: id}, true).catch(function(error) {
+            if (BrowserGoogleAuth.current()) { return drive.files.get({fileId: id}); }
+            throw error;
+          }).then(function(file) {
+            var shared = makeFile(file, 'text/plain', 'arr');
+            shared.shared = true;
+            shared.getOriginal = function() { return drive.properties.get({
+              fileId: id, propertyKey: BACKREF_KEY, visibility: 'PRIVATE'
+            }); };
+            shared.getContents = function() {
+              return readClientFile(id, true);
+            };
+            return shared;
+          });
+        }
         if(!publicOnly) {
           var fromDrive = drive.files.get({fileId: id}, true).then(function(googFileObject) {
             return makeSharedFile(googFileObject, true);
@@ -240,7 +299,7 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
         });
       },
       checkLogin: function() {
-        return collection.then(function() { return true; });
+        return baseCollection.then(function() { return true; });
       }
     };
 
@@ -297,6 +356,7 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
 
   function initialize(wrappedDrive) {
     drive = wrappedDrive;
+    if (window.CLIENT_SIDE && !BrowserGoogleAuth.current()) { publicOnly = true; }
     if(!publicOnly) {
       var baseCollection = findOrCreateDirectory(collectionName);
     }
@@ -309,7 +369,7 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
   }
 
   var ret = Q.defer();
-  gwrap.load({name: 'drive',
+  Q(gwrap.load({name: 'drive',
               version: 'v2',
               reauth: {
                 immediate: immediate,
@@ -317,7 +377,7 @@ window.createProgramCollectionAPI = function createProgramCollectionAPI(collecti
               },
               callback: function(drive) {
                 ret.resolve(initialize(drive));
-              }});
+              }})).catch(ret.reject);
   return ret.promise;
 }
 

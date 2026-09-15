@@ -122,7 +122,7 @@ function checkVersion() {
     }
   });
 }
-if(!isEmbedded) {
+if(!isEmbedded && !window.CLIENT_SIDE) {
   window.setInterval(checkVersion, VERSION_CHECK_INTERVAL);
 }
 
@@ -325,6 +325,7 @@ $(function() {
   };
 
   function setUsername(target) {
+    if (window.CLIENT_SIDE) { target.text('Google Drive connected'); return Q(); }
     return gwrap.load({name: 'plus',
       version: 'v1',
     }).then((api) => {
@@ -351,13 +352,17 @@ $(function() {
   });
 
   storageAPI = storageAPI.then(function(api) { return api.api; });
+  var clientSession = window.CLIENT_SIDE ? require('./client-session.js')({updateName: updateName,
+    setLocalName: function(name) { filename = name; setTitle(name); }}) : null;
   $("#fullConnectButton").click(function() {
+    if (clientSession) { return clientSession.connect(true); }
     reauth(
       false,  // Don't do an immediate load (this will require login)
       true    // Use the full set of scopes for this login
     );
   });
   $("#connectButton").click(function() {
+    if (clientSession) { return clientSession.connect(false); }
     $("#connectButton").text("Connecting...");
     $("#connectButton").attr("disabled", "disabled");
     $('#connectButtonli').attr('disabled', 'disabled');
@@ -403,7 +408,10 @@ $(function() {
     corresponding object.
   */
   let initialProgram;
-  if(params["get"] && params["get"]["shareurl"]) {
+  if (clientSession) {
+    initialProgram = Q(null);
+  }
+  else if(params["get"] && params["get"]["shareurl"]) {
     initialProgram = makeUrlFile(params["get"]["shareurl"]);
   }
   else {
@@ -539,6 +547,7 @@ $(function() {
   }
 
   function loadProgram(p) {
+    if (clientSession) { return clientSession.loadProgram(p); }
     programToSave = p;
     return p.then(function(prog) {
       if(prog !== null) {
@@ -685,7 +694,8 @@ $(function() {
     //console.log('(cf)docactelt=', document.activeElement);
   }
 
-  var programLoaded = loadProgram(initialProgram);
+  var programLoaded = clientSession ?
+    clientSession.initial(params["get"]["editorContents"] || CONTEXT_FOR_NEW_FILES) : loadProgram(initialProgram);
 
   var programToSave = initialProgram;
 
@@ -703,6 +713,7 @@ $(function() {
     return filename || "Untitled";
   }
   function autoSave() {
+    if (clientSession) { return clientSession.autoSave(); }
     programToSave.then(function(p) {
       if(p !== null && !p.shared) { save(); }
     });
@@ -717,7 +728,7 @@ $(function() {
   }
 
   function newEvent(e) {
-    window.open(window.APP_BASE_URL + "/editor");
+    window.open(window.APP_BASE_URL + "/editor/");
   }
 
   function saveEvent(e) {
@@ -737,6 +748,7 @@ $(function() {
 
   */
   function save(newFilename) {
+    if (clientSession) { return clientSession.save(newFilename); }
     var useName, create;
     if(newFilename !== undefined) {
       useName = newFilename;
@@ -794,7 +806,7 @@ $(function() {
 
   function saveAs() {
     if(menuItemDisabled("saveas")) { return; }
-    programToSave.then(function(p) {
+    (clientSession ? clientSession.currentFile() : programToSave).then(function(p) {
       var name = p === null ? "Untitled" : p.getName();
       var saveAsPrompt = new modalPrompt({
         title: "Save a copy",
@@ -821,7 +833,8 @@ $(function() {
   }
 
   function rename() {
-    programToSave.then(function(p) {
+    (clientSession ? clientSession.currentFile() : programToSave).then(function(p) {
+      if (!p) { return saveAs(); }
       var renamePrompt = new modalPrompt({
         title: "Rename this file",
         style: "text",
@@ -847,6 +860,7 @@ $(function() {
         if(p === null) {
           return null;
         }
+        if (clientSession) { clientSession.renamed(p); }
         updateName(p);
         window.flashMessage("Program saved as " + p.getName());
       })
@@ -1318,7 +1332,7 @@ $(function() {
 
   programLoaded.then(function(c) {
     CPO.documents.set("definitions://", CPO.editor.cm.getDoc());
-    if(c === "") {
+    if(c === "" && !clientSession) {
       c = CONTEXT_FOR_NEW_FILES;
     }
 
@@ -1332,6 +1346,7 @@ $(function() {
       // in which undo can revert the program back to empty
       CPO.editor.cm.setValue(c);
       CPO.editor.cm.clearHistory();
+      if (clientSession) { clientSession.attach(); }
     }
     else {
       const hideWhenControlled = [
@@ -1351,6 +1366,7 @@ $(function() {
   programLoaded.fail(function(error) {
     console.error("Program contents did not load: ", error);
     CPO.documents.set("definitions://", CPO.editor.cm.getDoc());
+    if (clientSession) { clientSession.attach(); }
   });
 
   console.log("About to load Pyret: ", originalPageLoad, Date.now());

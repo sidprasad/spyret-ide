@@ -163,7 +163,7 @@ window.makeShareAPI = function makeShareAPI(pyretVersion) {
   }
 
   function makeShareUrl(id) {
-    var localShareUrl = "/editor#share=" + id;
+    var localShareUrl = (window.CLIENT_SIDE ? new URL(window.APP_BASE_URL, location.href).pathname.replace(/\/$/, '') : '') + "/editor/#share=" + id;
     if(pyretVersion !== "") {
       localShareUrl += "&v=" + pyretVersion;
     }
