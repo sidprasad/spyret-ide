@@ -16,7 +16,8 @@
 const path = require('path');
 const fc = require('fast-check');
 const { PRELUDE, ROWS, arbitraries } = require('./corpus');
-const { start, runCase } = require('../pyret-round-trip/harness');
+const { OBSERVATIONS } = require('./observations');
+const { start, runCase, runObservation } = require('../pyret-round-trip/harness');
 const { format, writeReport } = require('./report');
 
 function arg(name, fallback) {
@@ -34,7 +35,7 @@ async function main() {
   }
 
   let session;
-  const rows = [], errors = [];
+  const rows = [], assertions = [], errors = [];
   try {
     session = await start();
     for (const row of ROWS) {
@@ -46,6 +47,13 @@ async function main() {
       );
       rows.push(r);
       if (!quiet) console.log(`${r.verdict.padEnd(18)} ${row.category}/${row.name} [${row.expect}] ${r.ms}ms`);
+    }
+    for (const observation of OBSERVATIONS) {
+      const r = { category: observation.category, name: observation.name, fixtureId: observation.fixtureId,
+        expect: observation.expect, desiredVerdict: observation.desiredVerdict, note: observation.note,
+        ...await runObservation(session, observation) };
+      assertions.push(r);
+      if (!quiet) console.log(`${r.verdict.padEnd(18)} observation: ${r.id}`);
     }
     const { value } = arbitraries(fc);
     for (const expr of fc.sample(value, { numRuns: fuzz, seed })) {
@@ -62,9 +70,11 @@ async function main() {
       ...session && session.metadata, seed, numRuns: fuzz, runErrors: errors,
       expectedCases: ROWS.filter((r) => r.expect !== 'out-of-scope').map((r) => `${r.category}/${r.name}`),
       desiredCases: ROWS.filter(r => r.expect !== 'out-of-scope'),
+      expectedAssertions: OBSERVATIONS.map(r => r.id),
+      desiredAssertions: OBSERVATIONS,
       evaluationContext: { prelude: PRELUDE, loadedAfterReification: true },
     };
-    const report = writeReport(out, rows, meta);
+    const report = writeReport(out, rows, meta, assertions);
     console.log('\n' + format(report.summary, meta) + `\n  report: ${out}`);
     process.exitCode = report.summary.fidelityHolds ? 0 : 1;
   }

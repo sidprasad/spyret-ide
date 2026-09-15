@@ -26,11 +26,12 @@ calls `new PyretDataInstance(value, {}, window.__internalRepl)`, exactly as
 test-specific structural conversion. The tests exercise these core calls in
 the editor runtime, not the graphical layout/rendering UI.
 
-Only JSON `atoms`, `relations`, and `types` cross to a separate editor page.
+JSON `atoms`, `relations`, and `types`, plus a separately selected root ID,
+cross to a separate editor page. The root ID is an argument, not datum metadata.
 The decoder resets its interactions to `nothing` and clears the core's global
 constructor cache before reification. It constructs a `JSONDataInstance` with
 default normalization, then applies the working `PyretDataInstance` reifier to
-that fresh datum. The explicit `PDI.prototype.reify.call(fresh)` selects the
+that fresh datum. The explicit `PDI.prototype.reify.call(fresh, rootId)` selects the
 same core class whose cache was cleared; editor bundles can expose more than
 one copy. No producer value, original expression, reference string, declaration
 schema, or seeded field-order cache is passed to this call.
@@ -113,7 +114,7 @@ datatypes**. Missing samples cannot be replaced by successful shrink attempts.
 # Strict measurement: exits nonzero on ANY fidelity gap or incomplete run
 npm run constructor-data-report
 
-# Fixed regression suite: all 33 fixtures must match on released core 6.0.0
+# Fixed regression suite: all 33 fixtures must match on released core 6.0.1
 npm run test:constructor-data
 
 # Report validity and harness sequencing without a browser
@@ -147,7 +148,7 @@ Normal runs use the published assets directly, and verify that the bundle's
 exported version agrees with the editor's CDN pin.
 
 Reports retain the manifest, source expressions and declarations, A/B strings,
-reified expressions, exported/received data, failure stages, environment
+reified expressions, exported/received data, separately selected root ID, failure stages, environment
 versions, and URLs/SHA-256 fingerprints of the deployed runtime/core artifacts.
 Empty runs, missing/duplicate/unexpected IDs, initialization errors, and run
 errors cannot report `fidelityHolds: true`. `complete: true` means the planned
@@ -164,7 +165,7 @@ timeout fails the job; neither job uses the known-gap regression baseline as
 its fidelity criterion.
 
 CI installs the IDE's lockfile and builds its actual Pyret runtime. It then
-loads the **released spytial-core 6.0.0** browser/component JS and CSS directly
+loads the **released spytial-core 6.0.1** browser/component JS and CSS directly
 from the editor's production CDN URLs. There is no core source checkout,
 local build, or `SPYTIAL_CORE_DIST` override in CI. The fixed regression suite
 also runs, including poisoned-cache and graph-rendering checks; a unit test
@@ -199,7 +200,7 @@ and Chrome 152, the original 30 fixtures measured:
 
 That report said **`fidelityHolds: false`** and the strict command exited 1.
 The old regression tests passed by asserting those failures, not fidelity.
-The current 6.0.0 regression suite instead requires every fixture to pass.
+The current 6.0.1 regression suite instead requires every fixture to pass.
 
 A seed-1 smoke run with `CONSTRUCTOR_RUNS=2 CONSTRUCTOR_SCHEMAS=2` measured
 53 fixtures: 18 exact matches, 13 mismatches, 7 relationalization errors, and
@@ -217,9 +218,9 @@ metadata and adapted primitive roots, so its older match count answered a
 different question. That path has now been removed; both current suites use
 the shared datum-only harness.
 
-## Released core 6.0.0 verification
+## Released core 6.0.1 verification
 
-With the production CDN pins set to 6.0.0 and no local-core override, the
+With the production CDN pins set to 6.0.1 and no local-core override, the
 combined constructor-data and broader reify-fidelity suites check implemented
 behavior and explicitly list pending requirements.
 All **33/33** fixed constructor fixtures match exactly. The suite also checks
@@ -239,9 +240,11 @@ Against the locally built identity-preserving core (not the production CDN pin):
 - At that time, the pinned-4.4.3 regression suites passed 111 tests, retaining
   their documented known-gap outcomes.
 
-These runs use the same runtime/JSON/reification/Pyret-check path, with no
-constructor cache passed to the reifier. The new core preserves positions in
-relation IDs and constructor arity in atom metadata. Generated tests also
+Those prerelease runs used the runtime/JSON/reification/Pyret-check path with
+no constructor cache passed to the reifier. At that stage core preserved field
+positions in relation IDs and arity in atom metadata. Released 6.0.1 instead
+recovers arity from constructor-field relations and the explicit nullary-constructor
+relation; it does not need that atom metadata. Generated tests also
 exposed Pyret source normalization of literal Unicode (U+FAAA to U+7740); the
 core now emits code-unit escapes so reconstruction preserves the string.
 This verifies the recorded finite samples, not every Pyret datatype or printer.

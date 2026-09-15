@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const vm = require('vm');
-const { runCase, replayDatum } = require('./harness');
+const { runCase, runObservation, replayDatum } = require('./harness');
 const { pageRuntime } = require('./browser');
 
 function fakePage(label, replies, calls) {
@@ -22,10 +22,10 @@ describe('Shared datum-only harness contract', function () {
     assert.strictEqual(row.stage, 'producer-init');
   });
 
-  it('passes only JSON to reification, and declarations only afterward', async function () {
+  it('passes only JSON and a root ID to reification, and declarations only afterward', async function () {
     const calls = [];
     const datum = { atoms: [], relations: [], types: [] };
-    const page = fakePage('producer', [{ ok: true }, { verdict: 'exported', A: 'original-print', datum },
+    const page = fakePage('producer', [{ ok: true }, { verdict: 'exported', A: 'original-print', datum, rootId: 'selected' },
       { verdict: 'pass', check: { blocks: 1, errors: 0, results: ['success'] } }], calls);
     const decoder = fakePage('decoder', [{ ok: true }, { verdict: 'reified', R: 'recovered()' },
       { ok: true }, { verdict: 'inspected', B: 'original-print' }], calls);
@@ -35,15 +35,37 @@ describe('Shared datum-only harness contract', function () {
     assert.deepStrictEqual(calls[0].args, ['DECLARATIONS']);
     assert.deepStrictEqual(calls[1].args, ['original()']);
     assert.deepStrictEqual(calls[2].args, ['nothing']);
-    assert.deepStrictEqual(calls[3].args, [JSON.stringify(datum)]);
+    assert.deepStrictEqual(calls[3].args, [JSON.stringify(datum), 'selected']);
     assert.deepStrictEqual(calls[4].args, ['DECLARATIONS']);
     assert.deepStrictEqual(calls[5].args, ['recovered()']);
     assert.deepStrictEqual(calls[6].args, ['original-print', 'original-print']);
   });
 
+  it('reports a content mismatch separately from a passing table inspection marker', async function () {
+    const calls = [];
+    const check = { blocks: 1, errors: 0, results: ['success'] };
+    const page = fakePage('producer', [{ ok: true },
+      { verdict: 'exported', A: '<table>', datum: {}, rootId: 'table-root' },
+      { verdict: 'pass', check }, { ok: true }, { verdict: 'inspected', B: '[list: 1]' },
+      { verdict: 'mismatch', check: { ...check, results: ['failure-not-equal'] } }], calls);
+    const decoder = fakePage('decoder', [{ ok: true }, { verdict: 'reified', R: 'recovered-table' },
+      { ok: true }, { verdict: 'inspected', B: '<table>' },
+      { ok: true }, { verdict: 'inspected', B: '[list: 2]' }], calls);
+    const row = await runObservation({ ide: { page, decoder } },
+      { expr: 'original-table', prelude: 'DECLARATIONS', observe: 'contents' });
+    assert.strictEqual(row.inspection.verdict, 'pass');
+    assert.strictEqual(row.verdict, 'mismatch');
+    assert.strictEqual(row.stage, 'observation-check');
+    assert.strictEqual(row.A, '[list: 1]');
+    assert.strictEqual(row.B, '[list: 2]');
+    assert.deepStrictEqual(calls[3].args, ['{}', 'table-root']);
+    assert.deepStrictEqual(calls[8].args, ['(contents)(original-table)']);
+    assert.deepStrictEqual(calls[10].args, ['(contents)(recovered-table)']);
+  });
+
   it('does not load declarations or evaluate after reification fails', async function () {
     const calls = [];
-    const decoder = fakePage('decoder', [{ ok: true }, { verdict: 'reify-error', error: 'missing metadata' }], calls);
+    const decoder = fakePage('decoder', [{ ok: true }, { verdict: 'reify-error', error: 'invalid datum' }], calls);
     const row = await replayDatum({ ide: { decoder } }, { atoms: [], relations: [], types: [] }, 'DECLARATIONS');
     assert.strictEqual(row.verdict, 'reify-error');
     assert.strictEqual(row.stage, 'reify');
@@ -81,8 +103,8 @@ function browserFixture(value) {
     getAtoms() { return datum.atoms; }
     getRelations() { return datum.relations; }
     getTypes() { return datum.types; }
-    reify() {
-      calls.push({ kind: 'reify' });
+    reify(rootId) {
+      calls.push({ kind: 'reify', rootId });
       assert.strictEqual(cache.size, 0, 'No seeded constructor cache may reach reification');
       assert.ok(this instanceof JSONDI, 'Reifier must operate on a fresh JSON instance');
       return 'recovered()';
@@ -106,6 +128,8 @@ describe('Shared browser boundary contract', function () {
       const f = browserFixture(value);
       const row = await f.api.exportWorkingCase('SOURCE');
       assert.strictEqual(row.verdict, 'exported');
+      assert.strictEqual(row.rootId, 'a');
+      assert.deepStrictEqual(Object.keys(row.datum).sort(), ['atoms', 'relations', 'types']);
       const calls = f.calls.filter(c => c.kind === 'relationalize');
       assert.strictEqual(calls.length, 1);
       assert.strictEqual(calls[0].args.length, 3);
@@ -119,8 +143,9 @@ describe('Shared browser boundary contract', function () {
 
   it('uses default JSON normalization with an empty cache and no synthetic constructors', function () {
     const f = browserFixture();
-    const row = f.api.reifyWorkingDatum(f.datum);
+    const row = f.api.reifyWorkingDatum(f.datum, 'a');
     assert.strictEqual(row.verdict, 'reified');
+    assert.strictEqual(f.calls.find(c => c.kind === 'reify').rootId, 'a');
     assert.deepStrictEqual(f.calls.map(c => c.kind), ['clear', 'normalize', 'reify', 'clear']);
     assert.deepStrictEqual(f.calls.find(c => c.kind === 'normalize').args, [f.datum]);
     assert.strictEqual(f.cache.size, 0);

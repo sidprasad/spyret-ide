@@ -227,9 +227,14 @@ function pageRuntime() {
       const version = window.spytialcore.version;
       if (typeof version !== 'string' || version === 'unknown') throw new Error('Core must expose its build version');
       if (window.__reifyFidelityLocalCore) return version;
-      const script = Array.from(document.scripts).map((s) => s.src).find((s) => /spytial-core@/.test(s));
-      const m = script && /spytial-core@([^/]+)/.exec(script);
-      if (!m || m[1] !== version) throw new Error('Loaded core version differs from the editor CDN pin');
+      const assets = Array.from(document.querySelectorAll('script[src], link[rel="stylesheet"][href]'))
+        .map(s => s.src || s.href).filter(url => /spytial-core@/.test(url));
+      const required = ['browser/spytial-core-complete.global.js',
+        'components/react-component-integration.global.js', 'components/react-component-integration.css'];
+      if (assets.length !== required.length || !required.every(file =>
+        assets.some(url => url.endsWith('/spytial-core@' + version + '/dist/' + file)))) {
+        throw new Error('All three editor CDN pins must agree with the loaded core version');
+      }
       return version;
     },
     async exportWorkingCase(expr) {
@@ -246,7 +251,11 @@ function pageRuntime() {
         PDI.clearGlobalConstructorCache();
         // Exactly the constructor invocation in trove/dom-render.js. No
         // primitive-root adapter, synthetic wrapper or replacement encoding.
-        row.datum = datumOf(new PDI(a.answer, {}, window.__internalRepl));
+        const instance = new PDI(a.answer, {}, window.__internalRepl);
+        row.datum = datumOf(instance);
+        // The relationalizer visits the input before its children. Select that
+        // atom at export time; root selection is not part of IDataInstance.
+        row.rootId = instance.getAtoms()[0].id;
         return Object.assign(row, { verdict: 'exported' });
       } catch (e) {
         return Object.assign(row, { verdict: 'relationalize-error', error: String(e) });
@@ -254,12 +263,12 @@ function pageRuntime() {
         PDI.clearGlobalConstructorCache();
       }
     },
-    reifyWorkingDatum(datum) {
+    reifyWorkingDatum(datum, rootId) {
       try {
         PDI.clearGlobalConstructorCache();
         const fresh = new window.spytialcore.JSONDataInstance(datum);
         if (fresh.getErrors && fresh.getErrors().length) throw new Error(fresh.getErrors().join('; '));
-        const R = PDI.prototype.reify.call(fresh);
+        const R = PDI.prototype.reify.call(fresh, rootId);
         if (typeof R !== 'string') throw new Error('Reifier did not return an expression string');
         return { verdict: 'reified', R, received: datumOf(fresh) };
       } catch (e) {
@@ -273,6 +282,28 @@ function pageRuntime() {
       if (!b.ok) return { verdict: 'reify-eval-error', error: b.error };
       if (typeof b.answer !== 'string') return { verdict: 'harness-error', error: 'torepr returned a non-string' };
       return { verdict: 'inspected', B: b.answer };
+    },
+    async renderExpression(expr) {
+      const r = await run('DR.genlayout(' + expr + ', "")');
+      if (!r.ok) return { verdict: 'render-eval-error', error: r.error };
+      const container = r.answer;
+      if (!container || !container.querySelector) return { verdict: 'render-error', error: 'No diagram container' };
+      document.body.appendChild(container);
+      try {
+        const error = container.querySelector('[id^="error-message-container-"]');
+        if (error && error.textContent) return { verdict: 'render-error', error: error.textContent };
+        const graph = container.querySelector('webcola-cnd-graph');
+        const deadline = Date.now() + 10000;
+        let nodes = 0;
+        while (graph && Date.now() < deadline) {
+          nodes = graph.shadowRoot ? graph.shadowRoot.querySelectorAll('g.node').length : 0;
+          if (nodes) break;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        const source = container.querySelector('pre');
+        return { verdict: nodes && source ? 'rendered' : 'render-error', nodes,
+          R: source && source.textContent };
+      } finally { container.remove(); }
     },
     async checkStrings(expected, actual) {
       // A and B reach this checker only AFTER datum-only reification and

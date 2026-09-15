@@ -13,7 +13,7 @@ function isViolation(r) {
   return (r.source === 'generated' || r.expect !== 'out-of-scope') && r.verdict !== 'pass';
 }
 
-function summarize(rows, meta = {}) {
+function summarize(rows, meta = {}, assertions = []) {
   const byKey = new Map();
   const bump = (key, ok) => {
     const e = byKey.get(key) || { pass: 0, total: 0 };
@@ -49,11 +49,34 @@ function summarize(rows, meta = {}) {
   const runErrors = meta.runErrors || [];
   const validRun = !runErrors.length && rows.length > 0 && validManifest && actualCases.size === corpus.length
     && !unexpectedCases.length && (meta.numRuns === undefined || generated.length >= meta.numRuns);
-  const complete = validRun && missingCases.length === 0;
-  const requiredComplete = validRun && requiredMissingCases.length === 0;
+
+  const assertionIds = assertions.map(r => r.id);
+  const expectedAssertions = meta.expectedAssertions || [];
+  const missingAssertions = expectedAssertions.filter(id => !assertionIds.includes(id));
+  const unexpectedAssertions = assertionIds.filter(id => !expectedAssertions.includes(id));
+  const pendingAssertionIds = new Set(meta.pendingAssertions || []);
+  const pendingAssertions = missingAssertions.filter(id => pendingAssertionIds.has(id));
+  const requiredMissingAssertions = missingAssertions.filter(id => !pendingAssertionIds.has(id));
+  const validAssertions = new Set(expectedAssertions).size === expectedAssertions.length
+    && new Set(assertionIds).size === assertionIds.length && !unexpectedAssertions.length
+    && [...pendingAssertionIds].every(id => expectedAssertions.includes(id));
+  const assertionsComplete = validAssertions && !missingAssertions.length;
+  const requiredAssertionsComplete = validAssertions && !requiredMissingAssertions.length;
+  const assertionsPass = assertions.every(r => r.verdict === 'pass');
+  const assertionsHold = assertionsComplete && assertionsPass;
+  const requiredAssertionsHold = requiredAssertionsComplete && assertionsPass;
+  const complete = validRun && missingCases.length === 0 && assertionsComplete;
+  const requiredComplete = validRun && requiredMissingCases.length === 0 && requiredAssertionsComplete;
+  const assertionCategories = [...new Set(assertions.map(r => r.category))];
+  const assertionScores = assertionCategories.map(category => ({ category,
+    pass: assertions.filter(r => r.category === category && r.verdict === 'pass').length,
+    total: assertions.filter(r => r.category === category).length }));
 
   return {
-    counts: { rows: rows.length, corpus: corpus.length, generated: generated.length, pending: pendingCases.length, verdicts },
+    assertionsHold, requiredAssertionsHold, assertionScores, missingAssertions, unexpectedAssertions,
+    pendingAssertions, requiredMissingAssertions,
+    assertionViolations: assertions.filter(r => r.verdict !== 'pass'),
+    counts: { rows: rows.length, corpus: corpus.length, generated: generated.length, assertions: assertions.length, pending: pendingCases.length, verdicts },
     /** headline: how much of the systematic corpus round-trips today */
     corpusPassRate: rate(corpus),
     supportedPassRate: rate(corpus.filter((r) => r.expect === 'supported')),
@@ -66,8 +89,8 @@ function summarize(rows, meta = {}) {
     requiredMissingCases,
     unexpectedCases,
     runErrors,
-    requiredChecksHold: requiredComplete && rows.every(r => !isViolation(r)),
-    fidelityHolds: complete && rows.every(r => !isViolation(r)),
+    requiredChecksHold: requiredComplete && requiredAssertionsHold && rows.every(r => !isViolation(r)),
+    fidelityHolds: complete && assertionsHold && rows.every(r => !isViolation(r)),
   };
 }
 
@@ -85,11 +108,17 @@ function format(summary, meta = {}) {
   lines.push(`  corpus rows passing:       ${pct(summary.corpusPassRate)}  (${summary.counts.corpus} rows)`);
   lines.push(`  supported rows passing:    ${pct(summary.supportedPassRate)}`);
   lines.push(`  generated values passing:  ${pct(summary.generatedPassRate)}  (${summary.counts.generated} values)`);
+  for (const s of summary.assertionScores) lines.push(`  observation:${s.category} ${s.pass}/${s.total}`);
+  for (const id of summary.requiredMissingAssertions) lines.push(`  MISSING OBSERVATION: ${id}`);
+  for (const id of summary.pendingAssertions) lines.push(`  PENDING OBSERVATION: ${id}`);
+  for (const id of summary.unexpectedAssertions) lines.push(`  UNEXPECTED OBSERVATION: ${id}`);
+  for (const r of summary.assertionViolations) lines.push(`  OBSERVATION FAILURE: ${r.id}: ${r.verdict} ${r.error || ''}`);
+  lines.push(`  content/behavior checks satisfied: ${summary.assertionsHold}`);
   lines.push(`  verdicts: ${JSON.stringify(summary.counts.verdicts)}`);
   for (const error of summary.runErrors) lines.push(`  RUN ERROR: ${error}`);
   if (summary.pendingCases.length) lines.push(`  PENDING desired behaviors (${summary.pendingCases.length}): ${summary.pendingCases.join(', ')}`);
   lines.push(`  full desired corpus satisfied: ${summary.fidelityHolds}`);
-  if (!summary.complete) lines.push(`  INCOMPLETE MEASUREMENT; unmeasured cases: ${summary.missingCases.join(', ') || '(check manifest/generated count)'}`);
+  if (!summary.complete) lines.push(`  INCOMPLETE MEASUREMENT; unmeasured cases: ${[...summary.missingCases, ...summary.missingAssertions].join(', ') || '(check manifest/generated count)'}`);
   if (summary.violations.length) {
     lines.push(`  gaps against desired behavior: ${summary.violations.length}`);
     for (const v of summary.violations.slice(0, 20)) {
@@ -101,16 +130,16 @@ function format(summary, meta = {}) {
       if (v.B !== undefined) lines.push(`      B: ${v.B}`);
     }
   } else {
-    lines.push('  measured gaps: none (pending cases, if any, remain unverified)');
+    lines.push('  measured inspection gaps: none (pending cases, if any, remain unverified)');
   }
   return lines.join('\n');
 }
 
-function writeReport(file, rows, meta = {}) {
+function writeReport(file, rows, meta = {}, assertions = []) {
   const report = Object.assign(
     { generatedAt: new Date().toISOString() },
     meta,
-    { summary: summarize(rows, meta), rows },
+    { summary: summarize(rows, meta, assertions), rows, assertions },
   );
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(report, null, 2));
