@@ -1,276 +1,89 @@
-[![Build Status](https://travis-ci.org/brownplt/code.pyret.org.svg)](https://travis-ci.org/brownplt/code.pyret.org)
+# Spyret IDE — client-side deployment
 
-# code.pyret.org
+The default build runs the Pyret compiler, REPL, Spytial visualization, and Google integration in the browser. Deploy `build/static/` to a static web host. No Express application, Redis database, OAuth client secret, or token-refresh service is required at runtime.
 
-## Simple Configuration
+## Build and run
 
-Configuration is controlled through a file called `.env` in the base
-directory.  This jives with how Heroku manages configuration variables;
-everything in `.env` is just an environment variable if you really want to
-manage things yourself, but using Heroku tools makes sure you run like things
-do in production.
+Use Node.js 20 or later, npm, and Make:
 
-First, get the [Heroku toolbelt](https://toolbelt.heroku.com/).
-
-Then, copy `.env.example` to `.env`.  If all you want to do is run Pyret code
-and test out the REPL, you only need to edit a few variables.  If you want to
-use the standalone pyret that comes with the checkout, you can just set
-
-```
-PYRET="http://localhost:4999/js/cpo-main.jarr"
+```sh
+npm ci --ignore-scripts
+npm run build
+npm start
 ```
 
-Then you can run
+Open http://localhost:4999/editor/. `npm start` is a local file server, with no application API routes. The build creates the `pyret` symlink if needed and builds the compiler bundle. A fresh build can take several minutes. `npm run build:static` is an alias for `npm run build`.
 
-```
-$ npm run local-install
-$ ln -s node_modules/pyret-lang pyret
-$ git submodule init
-$ git submodule update
-$ npm run build
-```
+The editor works without Google configuration. File → Open local file imports a program, edits are saved on this device as local drafts, and File → Download exports it. Drafts belong to the browser and origin; clearing site data removes them. A storage failure is shown explicitly. Reloading an unsaved draft restores it; File → New opens a separate draft.
 
-and the dependencies will be installed.
+## Optional Google Drive and Sheets
 
-To run the server (you can let it running in a separate tab --
-it doesn't need to be terminated across builds), run:
+Copy `.env.static.example` to `.env.static`, then fill in these **public** values:
 
-```
-$ npm start
-```
+- `GOOGLE_CLIENT_ID`: a Google OAuth client ID for a Web application.
+- `GOOGLE_API_KEY`: a browser API key restricted to your deployed origins and the APIs you use.
+- `GOOGLE_APP_ID`: the numeric Google Cloud project number, used by Google Picker.
 
-The editor will be served from `http://localhost:4999/editor`.
+Enable the Drive API, Google Picker API, and Sheets API in that project. Configure the OAuth consent screen (and test users when using testing mode). Register your deployment origin and `http://localhost:4999` as authorized JavaScript origins. The browser token flow uses no Spyret OAuth callback route or client secret.
 
-If you edit JavaScript or HTML files in `src/web`, run
+Run `npm run build` again after changing configuration. The build reads `.env.static`, with explicit environment variables taking precedence; it does not use the legacy server `.env` for public configuration.
 
-```
-$ npm run build
-```
+Click **Connect to Google Drive** to authorize access. The app requests `drive.file` to save files created by this app or selected through its picker, and `drive.readonly` to open existing files and shared links that your account can read. File → My Programs opens Google Picker. Save, Save a copy, Rename, and Share call Google directly. Enable Google Sheets access from the Pyret menu when needed.
 
-and then refresh the page.
+Declare both Drive scopes on the consent screen. `drive.readonly` is a restricted scope and public distribution requires Google's corresponding app verification. It allows direct opening by file ID; `drive.file` alone would require recipients to select private files in Picker first. See [Google's Drive scope requirements](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
 
-## Running with Development Pyret
+Access tokens stay in memory. After token expiry or page reload, reconnect through the button. Reconnecting preserves local edits; saving uploads them only after authorization. The status label distinguishes local recovery from a completed Drive save. Disconnect clears the in-memory token; it does not revoke the app's grant in your Google account.
 
-If you'd like to run with a development copy of Pyret, you can simply symlink
-`pyret` elsewhere.  For example, if your development environment has
-`code.pyret.org` and `pyret-lang` both checked out in the same directory, you
-could just run this from the CPO directory:
+See [Google's browser token model](https://developers.google.com/identity/oauth2/web/guides/use-token-model) and [Drive JavaScript setup](https://developers.google.com/workspace/drive/api/quickstart/js).
 
-```
-$ ln -s ../pyret-lang pyret
-```
+## Sharing and images
 
-## Configuration with Google Auth and Storage
+**Share** saves the current file and provides an IDE link to its latest saved contents. It keeps the file's Drive permissions. Use the Drive link in the dialog to grant access to particular people or enable “Anyone with the link” in Google's Share dialog. A recipient opens the IDE link and connects with a Google account that has access. Public files can also open without signing in. A denied or deleted file shows an access error. Edits to a shared program stay local until the recipient uses **Save a copy**.
 
-In order to have share links, saving, and other docs-related functionality
-work, you need to add to your `.env` a Google client secret, a client ID, a
-browser API key, and a server API key.  You'll copy
-`.env.example` to `.env`, and populate several from your dashboard at Google.
+Links carry a `resourcekey` when Drive provides one; it is forwarded for both metadata and content reads. Recipients fetch directly from Google with their own access. Old owner-credential links work only if the underlying file's Drive permissions allow the recipient to read it. No owner's credentials, refresh tokens, or sharing database are involved.
 
-At https://console.developers.google.com/project, make a project, then:
+Images selected from Drive are embedded as data URLs in the program, so reading them later needs no credentials or image proxy. Arbitrary external image URLs must allow browser access (CORS). Large embedded images increase program and draft sizes.
 
-- For `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, which are used for
-  authenticating users:
+## Static hosting
 
-       Credentials -> Create Credentials -> OAuth Client Id
+Upload the contents of `build/static/`. Serve `.js` as JavaScript and use directory index files (`/editor/` → `/editor/index.html`). HTTPS is required outside localhost for Google authorization. Do not add cross-origin isolation headers that block Google's authorization popups or the external scripts.
 
-  For development, you should set the javascript origins to
-  `http://localhost:4999` and the redirect URI to
-  `http://localhost:4999/oauth2callback`.
+For a deployment such as `https://example.com/spyret/`, set `STATIC_BASE_PATH=/spyret` before building and mount the output at that path. `npm start` also honors that prefix. No SPA fallback or dynamic routes are needed.
 
-- For `GOOGLE_API_KEY`, which is used in the browser to make certain public
-  requests when users are not logged in yet:
+This is a **client-only application**, not a fully offline distribution: it still loads pinned Spytial assets and Google Charts from CDNs, and Google features and remote imports require network access. Node and Make are build-time tools only.
 
-       Credentials -> Create Credentials -> API Key -> Browser Key
+### GitHub Pages
 
-  Again, you should use `http://localhost:4999` as the referer for development.
+The included **Deploy static IDE to GitHub Pages** workflow builds, tests, and uploads the static files when run manually. In the GitHub repository:
 
+1. Set Settings → Pages → Source to **GitHub Actions**.
+2. Add repository Actions variables `GOOGLE_CLIENT_ID`, `GOOGLE_API_KEY`, and `GOOGLE_APP_ID` with the public values above.
+3. Register `https://sidprasad.github.io` as a Google authorized JavaScript origin (no `/spyret` suffix), and allow the deployed pages in the browser API key's HTTP referrer restrictions.
+4. Run **Deploy static IDE to GitHub Pages** from Actions. The workflow derives the asset and link prefix from Pages configuration.
 
-- Add the Google Drive API to your project and include the Google Drive API
-  Scopes in your OAuth consent screen.
+For `https://sidprasad.github.io/spyret/`, host this project in a repository named `spyret`. The current `sidprasad/spyret-ide` repository would instead use `/spyret-ide/`. Another option is to place a `/spyret` build in the `spyret` directory of the `sidprasad.github.io` user-site repository.
 
-- For Google accounts to work locally, you'll also need to run a local Redis instance
-  and put its connection url into the `REDISCLOUD_URL` variable in `.env `
+To preview the intended path locally, run `STATIC_BASE_PATH=/spyret npm run build`, then `npm start` and open `http://localhost:4999/spyret/editor/`. Docker is not needed. See [GitHub's custom Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 
-## Testing with Selenium
+## Tests
 
-There are tests in `test-util/` and `test/` that use Selenium to script a
-browser.
-
-The instructions for setting up Selenium to open Chrome locally are somewhat
-platform-specific.  You will need
-[chromedriver](https://sites.google.com/a/chromium.org/chromedriver/) to be on
-your path.  Then run running:
-
-```
-npm install selenium-webdriver mocha
-npm run mocha
+```sh
+npm run build
+npm run test:client
 ```
 
-with Selenium and mocha installed and a development server running.  You can
-refine this with, e.g.
+The client tests serve the built files at their configured path with a plain static server and run the actual compiler and Spytial in Chrome. They also cover local draft recovery, simulated Google authorization, and public/private sharing with allowed and denied recipients. They do not use a real Google account. Set `CHROME_BINARY` if Chrome is installed at a nonstandard location. See `test/client-side/`.
 
-```
-npm run mocha -- -g "errors"
-```
+The existing runtime regression suites remain available:
 
-to only run the tests in `test/errors.js`.  (The extra `--` are to escape the
-portion of the options to pass to the underlying `mocha` command).
-
-Another options to run all the tests on Sauce Labs (https://saucelabs.com).
-You can also get a personal free account with unlimited testing if you only
-test open-source stuff (which Pyret/CPO are).  Sauce also stores screencasts
-and logs of your tests, which can be helpful with debugging.
-
-First, add your sauce username and access key (from your account page at
-Sauce) to `.env`:
-
-```
-SAUCE_USERNAME="gibbs"
-SAUCE_ACCESS_KEY="deadbeef-2671-11e5-a6a1-206a8a0824be"
-```
-
-(Not my real access key)
-
-Second, install the Sauce Connect client for your system from
-https://docs.saucelabs.com/reference/sauce-connect/.  Follow the instructions
-for starting the server (the default configuration should work fine), using
-the same username and access key, for example, on Ubuntu I run:
-
-```
-~/sc-4.3.9-linux32$ ./bin/sc -u gibbs -k deadbeef-2671-11e5-a6a1-206a8a0824be
-```
-
-That sets up a tunnel to Sauce Labs, and on the same machine you should now be
-able to run:
-
-```
-$ heroku local:run ./node_modules/mocha/bin/mocha
-```
-
-To run only a particular file, pass in one of the filenames in `test/`, e.g.
-
-```
-$ heroku local:run ./node_modules/mocha/bin/mocha test/world.js
-```
-
-Check out how `world.js` and `image.js` are written: they look up files from
-`test-util/pyret-programs` and run them according to Selenium testers in
-`test-util/util.js`.  The best way to test a whole new library is probably to
-add a directory here and figure out a good predicate that can be applied
-across the files (`runAndCheckAllTestsPassed` is probably a good candidate for
-many use cases).
-
-## Reify fidelity evaluation
-
-For an end-to-end test of the **working relationalizer/reifier** against
-Spyret's actual Pyret runtime, see
-[test/constructor-data/README.md](test/constructor-data/README.md). It serializes
-the datum without a producer cache, evaluates the reified expression in fresh
-Pyret interactions, and compares `torepr` strings with an actual Pyret check.
-There is no replacement relationalizer. The editor and PR CI use the released
-spytial-core **6.0.1** CDN bundles. Both the fixed regression suite and the
-strict measurement require exact matches for every planned constructor-data
-fixture; any mismatch or incomplete run fails. The documented 4.4.3 failures
-are historical measurements, not accepted failures in the current suite.
-
-```
+```sh
+npm run test:constructor-data:unit
 npm run test:constructor-data
-npm run constructor-data-report
-```
-
-`test/reify-fidelity/` extends the corpus to broader Pyret value forms using
-the **same** `test/pyret-round-trip/` harness as the constructor suite. Both
-pass live values directly to the production relationalizer, use default JSON
-normalization, and reify with empty constructor caches and a separate root ID. There is no primitive
-adapter or supplied field schema; declarations are loaded only after reification
-to evaluate the completed expression. Every in-scope test specifies the desired exact round trip;
-the two remaining function cases are visibly pending,
-not passing tests that require current failures to persist. The diagnostic CLI
-measures all cases and exits nonzero on any gap. Tables also have separate content
-and behavior checks: matching a printed table marker does not establish those properties.
-A separate pending check records a newly measured limitation in preserving shared
-arrays inside immutable dictionaries. See
-[test/reify-fidelity/README.md](test/reify-fidelity/README.md).
-
-```
 npm run test:reify-fidelity
-REIFY_INCLUDE_PENDING=1 npm run test:reify-fidelity
-npm run reify-fidelity-report
 ```
 
-## Running with Docker
+See [constructor round-trip tests](test/constructor-data/README.md) and [broader fidelity tests](test/reify-fidelity/README.md).
 
-A Dockerfile is provided for building and running the server locally without needing to install Node.js or the Heroku toolbelt.
+## Legacy server
 
-### Build the image
-
-```
-docker build -t spyret-ide:local .
-```
-
-### Run the server
-
-```
-docker run --rm -it --name spyret-ide -p 4999:4999 spyret-ide:local
-```
-
-The editor will be served from `http://localhost:4999/editor`.
-
-To stop the container:
-
-```
-docker stop spyret-ide
-```
-
-You can override any environment variable at runtime:
-
-```
-docker run --rm -it -p 4999:4999 \
-  -e GOOGLE_CLIENT_ID=your-client-id \
-  -e GOOGLE_CLIENT_SECRET=your-client-secret \
-  -e GOOGLE_API_KEY=your-api-key \
-  -e SESSION_SECRET=a-strong-secret \
-  spyret-ide:local
-```
-
-### Notes
-
-- The image defaults to `NODE_ENV=development`. This disables the HTTPS-only redirect that runs in production (behind a load balancer that sets `x-forwarded-proto`). If you deploy behind such a proxy, override with `-e NODE_ENV=production`.
-- `GIT_REV` and `GIT_BRANCH` are set to `docker` at build time since no `.git` directory is present in the image. Pass them as build args to embed real values:
-
-  ```
-  docker build --build-arg GIT_REV=$(git rev-parse --short HEAD) \
-               --build-arg GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
-               -t spyret-ide:local .
-  ```
-
-  You can also pass them at runtime with `-e GIT_REV=... -e GIT_BRANCH=...`.
-
-## Setting up your own remote version of code.pyret.org with Heroku:
-
-If you are doing development on code.pyret.org, it can be useful to run it on a remote server (for sharing purposes, etc.). Heroku allows us to do this easily.
-
-### Before you begin:
-
-Make sure you have cloned the code.pyret.org git repository. Then follow the instructions to get it running locally.
-
-The Heroku getting started guide is helpful, but it will be easier if you set things up in the order below
-https://devcenter.heroku.com/articles/getting-started-with-nodejs
-
-### To run remotely:
-1. Make an account at http://heroku.com/ and from a terminal run `heroku login`
-2. Navigate to your local code.pyret.org repository in a terminal.
-3.	Run `heroku create <appname>`. This will create an app on Heroku linked to your local repository.
-4.	Set the config variables found in `.env` (or `.env.example`) on Heroku. You can enter them using `heroku config:set NAME1=VALUE1 NAME2=VALUE2` or in the online control panel. There are 3 config variables you should pay special attention to:
-  - add key `GIT_BRANCH`, value should be your branch name
-  - add key `GIT_REV`, value should be your branch name
-  - change `PYRET` from local host to a URL that points to cpo-main.jarr from build folder. Make sure URL ends in js instead of jarr.
-5.	Add a Redis Cloud database using `heroku addons:add rediscloud` or at addons.heroku.com. You will likely have to verify first (enter a credit card), but you shouldn’t actually be charged for the most basic level (but check for yourself!).
-6.	Now, still in your code.pyret.org repo, run
-
-        $ git push heroku <localbranch>:master
-        $ heroku ps:scale web=1
-
-7.	Now run `heroku open` or visit appname.herokuapp.com.
-8.  Tips for redeploy: if you don't see a successful build under heroku webiste's activity tab, but get "everything is up-to-date" when you run `git push heroku <localbranch>:master`, or your build doesn't look up-to-date, you can do an empty commit: `git commit --allow-empty -m "force deploy"`
+The original Express implementation remains available through `npm run build:server` and `npm run start:server` for compatibility and comparison. It is not part of the default deployment. See [legacy setup](docs/legacy-server.md). The legacy Parley/project-template routes and Blocks editor are not included in the static distribution.

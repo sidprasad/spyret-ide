@@ -19,12 +19,13 @@ var gwrap = window.gwrap = {
         // Shallow copy
         var copy = $.extend({}, params);
         delete copy.reauth;
-        gw.load(copy)
+        Q(gw.load(copy))
           .then(function(loaded) {
+            if (!loaded) { ret.resolve(loaded); return; }
             loaded.auth = gw.auth; // NOTE(joe): hmmm
             loaded.hasAuth = function() { return gw.auth !== null; }
             ret.resolve(loaded);
-          });
+          }, ret.reject);
       })
       .fail(function(err) {
         ret.reject(err); 
@@ -45,6 +46,7 @@ var gwrap = window.gwrap = {
  * @returns A promise which will resolve following the re-authentication.
  */
 function reauth(immediate, useFullScopes) {
+  if (window.CLIENT_SIDE) { return BrowserGoogleAuth.authorize(immediate, useFullScopes); }
   var d = Q.defer();
   if (!immediate) {
     var path = "/login?redirect=" + encodeURIComponent("/close.html");
@@ -192,6 +194,10 @@ function loadAPIWrapper(immediate) {
     }
     var retry = f().then(function(result) {
       if(isAuthFailure(result)) {
+        if (window.CLIENT_SIDE) {
+          BrowserGoogleAuth.clear();
+          return result;
+        }
         return refresh().then(function(authResult) {
           if(!authResult || authResult.error) {
             return { error: { code: 401, message: "Couldn't re-authorize" } };
@@ -240,22 +246,25 @@ function loadAPIWrapper(immediate) {
    * @returns {Promise} A promise which resolves to the result of the Google query
    */
   function gQ(makeRequest, skipAuth) {
-    var oldAccess = gapi.auth.getToken();
-    if (skipAuth) { gapi.auth.setToken({ access_token: null }); }
-    var ret = failCheck(authCheck(function() {
+    var oldAccess = gapi.client.getToken();
+    if (skipAuth) { gapi.client.setToken(null); }
+    var execute = function() {
       var d = Q.defer();
       // TODO: This should be migrated to a promise
       makeRequest().execute(function(result) {
         d.resolve(result);
       });
       return d.promise;
-    }));
+    };
+    var ret = failCheck(skipAuth ? execute() : authCheck(execute));
     if (skipAuth) {
       // NOTE(joe): see discussion at https://github.com/brownplt/code.pyret.org/issues/255
       // for why (A) we do this before the request completes and (B) the
       // setTimeout here is necessary
       setTimeout(function() {
-        gapi.auth.setToken(oldAccess);
+        // A disconnect or a newer grant may have happened while requesting the
+        // public file. Never restore an expired/disconnected browser token.
+        gapi.client.setToken(window.CLIENT_SIDE ? BrowserGoogleAuth.current() || null : oldAccess);
       });
     }
     return ret;
@@ -285,18 +294,20 @@ function loadAPIWrapper(immediate) {
           // Shallow copy
           var copy = $.extend({}, params);
           delete copy.reauth;
-          gw.load(copy)
+          Q(gw.load(copy))
             .then(function(loaded) {
               reloaded.resolve(loaded);
-            });
-        });
+            }, reloaded.reject);
+        }, reloaded.reject);
       return reloaded.promise;
     }
     for (var i = 0; i < cachedAPIS.length; ++i) {
       var cached = cachedAPIS[i];
       if (params.name && (cached.query.name === params.name)) {
+        if (params.callback) { params.callback(cached.api); }
         return cached.api;
       } else if (params.url && (cached.query.url === params.url)){
+        if (params.callback) { params.callback(cached.api); }
         return cached.api;
       }
     }
@@ -359,6 +370,14 @@ function loadAPIWrapper(immediate) {
 
     var name = params.name || params.url;
     var version = params.version;
+
+    if (window.CLIENT_SIDE) {
+      return Q(gapi.client.load(name, version)).then(function() {
+        var loaded = processDelta();
+        if (params.callback) { params.callback(loaded); }
+        return loaded;
+      });
+    }
 
     if (params.callback) {
       gapi.client.load(name, version, function() {

@@ -62,9 +62,25 @@ window.makeShareAPI = function makeShareAPI(pyretVersion) {
   $(".menuButton a").click(hideAllHovers);
 
   function makeShareLink(originalFile) {
-    var link = $('<button aria-label="Publish, F9" aria-describedby="mhelp-menus mhelp-activate mhelp-escape" class="focusable blueButton" role="menuitem" tabindex="-1">').text("Publish");
+    var label = window.CLIENT_SIDE ? 'Share' : 'Publish';
+    var link = $('<button aria-describedby="mhelp-menus mhelp-activate mhelp-escape" class="focusable blueButton" role="menuitem" tabindex="-1">').text(label).attr('aria-label', label + ', F9');
     var shareDiv = $("<div>").addClass("share");
-    link.click(function() { showShares(shareDiv, originalFile); });
+    link.click(function() {
+      if (window.CLIENT_SIDE) {
+        window.CPO.save().then(function(file) {
+          return new modalPrompt({
+            title: 'Share this program', style: 'copyText', submitText: 'Done',
+            options: [
+              {message: 'Share this link. Recipients need access to this file in Google Drive. The link opens the latest saved version.',
+                text: makeShareUrl(file.getUniqueId(), file.getResourceKey())},
+              {message: 'To grant access, open the Drive link below and use Share to choose people or anyone with the link.',
+                text: file.getExternalURL()},
+              {message: 'Recipients can edit locally and use Save a copy to keep their changes.'}
+            ]
+          }).show();
+        }).catch(function(error) { window.stickError(error.message || 'Could not save the program for sharing.'); });
+      } else { showShares(shareDiv, originalFile); }
+    });
     return link;
   }
 
@@ -162,10 +178,11 @@ window.makeShareAPI = function makeShareAPI(pyretVersion) {
     });
   }
 
-  function makeShareUrl(id) {
-    var localShareUrl = "/editor#share=" + id;
+  function makeShareUrl(id, resourceKey) {
+    var localShareUrl = (window.CLIENT_SIDE ? (window.APP_BASE_URL || '').replace(/\/$/, '') : '') + "/editor/#share=" + encodeURIComponent(id);
+    if (resourceKey) { localShareUrl += '&resourcekey=' + encodeURIComponent(resourceKey); }
     if(pyretVersion !== "") {
-      localShareUrl += "&v=" + pyretVersion;
+      localShareUrl += "&v=" + encodeURIComponent(pyretVersion);
     }
     return window.location.origin + localShareUrl;
   }
