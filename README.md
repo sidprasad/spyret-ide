@@ -57,7 +57,7 @@ This is a **client-only application**, not a fully offline distribution: it stil
 The included **Deploy static IDE to GitHub Pages** workflow builds, tests, and uploads the static files when run manually. In the GitHub repository:
 
 1. Set Settings → Pages → Source to **GitHub Actions**.
-2. Add repository Actions variables `GOOGLE_CLIENT_ID`, `GOOGLE_API_KEY`, and `GOOGLE_APP_ID` with the public values above.
+2. Add repository Actions secrets `GOOGLE_CLIENT_ID`, `GOOGLE_API_KEY`, and `GOOGLE_APP_ID` with the public deployment configuration above.
 3. Register `https://sidprasad.github.io` as a Google authorized JavaScript origin (no `/spyret` suffix), and allow the deployed pages in the browser API key's HTTP referrer restrictions.
 4. Run **Deploy static IDE to GitHub Pages** from Actions. The workflow derives the asset and link prefix from Pages configuration.
 
