@@ -1,6 +1,0 @@
-node_modules
-build
-compiled
-.git
-.env
-*.log

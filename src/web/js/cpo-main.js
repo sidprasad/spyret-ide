@@ -944,8 +944,8 @@
                 placeInEditor("[list:");
               }
               documents.forEach(function(d, idx) {
-                var pathToImg = '"' + window.APP_BASE_URL + "/shared-image-contents?sharedImageId="
-                  + d.id + '"';
+                var pathToImg = window.CLIENT_SIDE ? JSON.stringify(d.spyretImageData) :
+                  '"' + window.APP_BASE_URL + "/shared-image-contents?sharedImageId=" + d.id + '"';
                 var outstr = asDefs ? ("img" + curImg + " = ") : "";
                 ++curImg;
                 outstr += "image-url(" + pathToImg + ")";

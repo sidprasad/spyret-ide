@@ -106,7 +106,7 @@ async function ensureServer(options = {}) {
 }
 
 /** Open the editor and wait until Pyret, the REPL hook and spytial-core are ready. */
-async function openIde(baseUrl, pageCount = 2) {
+async function openIde(baseUrl, pageCount = 2, options = {}) {
   // Integration-only override: replay locally built core assets at the editor's
   // existing URLs. Production pins and the Pyret runtime are unchanged. Fail
   // before launch if any asset is missing; never mix local and CDN core copies.
@@ -126,6 +126,7 @@ async function openIde(baseUrl, pageCount = 2) {
     // Loading two 40 MB Pyret runtimes concurrently creates substantial
     // compilation/memory pressure. Initialize the pages sequentially.
     for (const page of pages) {
+      if (options.configurePage) { await options.configurePage(page); }
       if (localCore) {
         await page.evaluateOnNewDocument(() => { window.__reifyFidelityLocalCore = true; });
         await page.setRequestInterception(true);
@@ -149,7 +150,7 @@ async function openIde(baseUrl, pageCount = 2) {
           return loader && getComputedStyle(loader).display === 'none'
             && window.__internalRepl
             && window.spytialcore && window.spytialcore.PyretDataInstance;
-        }, { timeout: 180000, polling: 100 });
+        }, { timeout: options.timeout || 180000, polling: 100 });
       } catch (e) {
         throw new Error(`IDE readiness failed: ${e.message}\n${errors.slice(-10).join('\n')}`);
       }
@@ -335,4 +336,4 @@ function pageRuntime() {
   return true;
 }
 
-module.exports = { ensureServer, openIde, pageRuntime };
+module.exports = { ensureServer, openIde, pageRuntime, findChrome };

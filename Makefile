@@ -305,6 +305,7 @@ EDITOR_MISC_JS = build/web/js/q.js \
 		  build/web/js/google-apis/drive.js \
 		  build/web/js/google-apis/picker.js \
 		  build/web/js/google-apis/sheets.js \
+		  build/web/js/google-apis/browser-auth.js \
 		  build/web/js/authenticate-storage.js
 
 build/web/js/editor-misc.min.js: $(EDITOR_MISC_JS)

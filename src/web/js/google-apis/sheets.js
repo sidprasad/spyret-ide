@@ -807,7 +807,7 @@ function createSheetsAPI(immediate) {
   }
 
   var ret = Q.defer();
-  gwrap.load({url: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
+  Q(gwrap.load({name: 'sheets', version: 'v4',
               reauth: {
                 immediate: immediate
               },
@@ -835,6 +835,6 @@ function createSheetsAPI(immediate) {
                 else {
                   ret.resolve(createAPI(sheets.spreadsheets));
                 }
-              }});
+              }})).catch(ret.reject);
   return ret.promise;
 }

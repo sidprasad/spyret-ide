@@ -3,6 +3,10 @@
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
   <title>code.pyret.org</title>
+  <script>
+    window.CLIENT_SIDE = "{{ CLIENT_SIDE }}" === "true";
+    window.GOOGLE_CLIENT_ID = "{{ GOOGLE_CLIENT_ID }}";
+  </script>
   <link crossorigin="anonymous" rel="preload" href="{{&PYRET}}" as="script">
   <script>window.PYRET = "{{&PYRET}}";</script>
   <link rel="stylesheet" href="{{ &BASE_URL }}/css/reset.css" />
@@ -473,8 +477,9 @@ var GIT_BRANCH = "{{ &GIT_BRANCH }}";
 <script>
 var apiKey = "{{ GOOGLE_API_KEY }}";
 var appId = "{{ GOOGLE_APP_ID }}";
-if(apiKey === "") { handleClientLoad(""); }
+if(!window.CLIENT_SIDE && apiKey === "") { handleClientLoad(""); }
 function handleGoogLoad() {
+  if(window.CLIENT_SIDE) { return; }
   if((window.parent !== window) || (!window.location.protocol.startsWith("http"))) {
     var publicOnly = true;
   }
@@ -488,7 +493,13 @@ function handleGoogLoad() {
 </script>
 <!-- Google API Loader (For picker) -->
 <!-- GAPI Client -->
-<script type="text/javascript" src="https://apis.google.com/js/client.js?onload=handleGoogLoad"></script>
+<script>
+if (!window.CLIENT_SIDE) {
+  var googleScript = document.createElement('script');
+  googleScript.src = 'https://apis.google.com/js/client.js?onload=handleGoogLoad';
+  document.head.appendChild(googleScript);
+}
+</script>
 <script>
 var POSTMESSAGE_ORIGIN = "{{{ POSTMESSAGE_ORIGIN }}}";
 console.log(window.performance.now());

@@ -1,0 +1,58 @@
+name: Deploy static IDE to GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Install dependencies
+        run: |
+          git config --global url.https://github.com/.insteadOf ssh://git@github.com/
+          npm ci --ignore-scripts
+      - name: Build static IDE
+        run: npm run build
+        env:
+          STATIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_APP_ID: ${{ secrets.GOOGLE_APP_ID }}
+      - run: npm run test:client
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/static
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

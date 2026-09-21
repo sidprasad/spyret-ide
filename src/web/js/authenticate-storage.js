@@ -4,6 +4,18 @@ var sheetsAPIDeferred = Q.defer();
 window.storageAPI = storageAPIDeferred.promise;
 window.sheetsAPI = sheetsAPIDeferred.promise;
 
+if (window.CLIENT_SIDE) {
+  // A stable, lazy API lets the compiler start without Google, then use Drive
+  // after connecting. No network or authorization is required to run Pyret.
+  storageAPIDeferred.resolve({ api: BrowserGoogleAuth.api,
+    collection: Q.reject(new Error('Connect to Google Drive to access your files.')) });
+  window.sheetsAPI = {
+    then: function(resolve, reject) {
+      return BrowserGoogleAuth.load().then(function() { return createSheetsAPI(true); }).then(resolve, reject);
+    }
+  };
+}
+
 window.handleClientLoad = function handleClientLoad(apiKey, publicOnly) {
   if(!window.gapi || !window.gapi.client) {
     storageAPIDeferred.reject("no gapi.client");
