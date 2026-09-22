@@ -161,10 +161,12 @@ module.exports = function(options) {
     return saving;
   }
   function loadProgram(promise) {
-    return promise.then(adopt).then(function(p) {
+    return promise.then(function(p) {
       return p.getContents().then(function(contents) {
+        adopt(p);
         programId = p.shared ? null : p.getUniqueId();
         shareId = p.shared ? p.getUniqueId() : null;
+        resourceKey = typeof p.getResourceKey === 'function' ? p.getResourceKey() : null;
         key = namespace + (p.shared ? 'share:' : 'program:') + p.getUniqueId();
         dirty = false;
         return contents;
@@ -217,8 +219,23 @@ module.exports = function(options) {
     onSelect: function(files, googlePicker) {
       persist();
       var picked = files[0];
-      location.assign(window.APP_BASE_URL + '/editor/#program=' + encodeURIComponent(picked[googlePicker.Document.ID]) +
-        (picked.resourceKey ? '&resourcekey=' + encodeURIComponent(picked.resourceKey) : ''));
+      var pickedId = picked[googlePicker.Document.ID];
+      var pickedResourceKey = picked.resourceKey;
+      setStatus('Opening from Drive…');
+      return loadProgram(BrowserGoogleAuth.api.getFileById(pickedId, pickedResourceKey)).then(function(contents) {
+        history.replaceState(null, '', '#program=' + encodeURIComponent(programId) +
+          (resourceKey ? '&resourcekey=' + encodeURIComponent(resourceKey) : ''));
+        CPO.editor.cm.setValue(contents);
+        CPO.editor.cm.clearHistory();
+        dirty = false;
+        persist();
+        setStatus('Loaded from Drive');
+        authUI();
+      }).catch(function(error) {
+        var message = error.message || 'Could not open the selected Drive file.';
+        setStatus(message);
+        window.stickError(message);
+      });
     },
     onError: function(error) { window.stickError(String(error)); }
   });
