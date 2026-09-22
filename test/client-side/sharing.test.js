@@ -48,13 +48,18 @@ describe('shared Drive links in the browser (simulated Google)', function() {
         'Access-Control-Allow-Headers': 'authorization,x-goog-drive-resource-keys'};
       if (request.method() === 'OPTIONS') { return request.respond({status: 204, headers}); }
       requests.push({url: request.url(), method: request.method(), headers: request.headers()});
-      const hasKey = request.headers()['x-goog-drive-resource-keys'] === 'shared-file/link-key';
+      const fileId = decodeURIComponent(url.pathname.split('/').pop());
+      const pickedFile = fileId === 'picked-file';
+      const hasKey = request.headers()['x-goog-drive-resource-keys'] ===
+        (pickedFile ? 'picked-file/picked-key' : 'shared-file/link-key');
       const hasAccess = publicFile || (allowed && request.headers().authorization === 'Bearer recipient-token');
       const media = url.searchParams.get('alt') === 'media';
-      const ok = hasKey && hasAccess && !(denyContents && media);
+      const ok = ['shared-file', 'picked-file'].includes(fileId) && hasKey && hasAccess && !(denyContents && media);
       return request.respond({status: ok ? 200 : 404, headers,
         contentType: media ? 'text/plain' : 'application/json',
-        body: ok ? (media ? 'shared-answer = 42' : JSON.stringify({id: 'shared-file', title: 'Shared example', mimeType: 'text/plain'})) :
+        body: ok ? (media ? (pickedFile ? 'picked-answer = 99' : 'shared-answer = 42') :
+          JSON.stringify({id: fileId, title: pickedFile ? 'Picked program' : 'Shared example',
+            mimeType: 'text/plain', resourceKey: pickedFile ? 'picked-key' : 'link-key'})) :
           JSON.stringify({error: {code: 404, message: 'File not found'}})});
     });
     await page.goto('https://spyret.test/spyret/editor/#share=shared-file&resourcekey=link-key');
@@ -68,7 +73,11 @@ describe('shared Drive links in the browser (simulated Google)', function() {
       window.apiKey = 'public-key';
       window.errors = [];
       window.stickError = message => errors.push(message);
-      window.FilePicker = function() {};
+      window.FilePicker = function(options) {
+        window.pickerOptions = options;
+        this.open = function() {};
+        Promise.resolve().then(options.onLoaded);
+      };
       // Simulate only Google and the editor widget. Run the real authorization,
       // API wrapper, Drive adapter, and session code below.
       const state = window.state = {token: null, value: '', listeners: [], mutations: []};
@@ -141,6 +150,24 @@ describe('shared Drive links in the browser (simulated Google)', function() {
     assert.match(await page.$eval('#save-status', el => el.textContent), /account with access/);
     assert.strictEqual(await page.evaluate(async () => await session.currentFile()), null);
     assert.deepStrictEqual(await page.evaluate(() => state.mutations), []);
+  });
+
+  it('opens a picked program without reloading or losing the in-memory authorization', async function() {
+    const requests = await recipient();
+    await connect();
+    await page.waitForFunction(() => window.pickerOptions);
+    await page.evaluate(async () => {
+      await pickerOptions.onSelect([{id: 'picked-file', resourceKey: 'picked-key'}],
+        {Document: {ID: 'id'}});
+    });
+    assert.strictEqual(await page.evaluate(() => state.value), 'picked-answer = 99');
+    assert.strictEqual(await page.title(), 'Picked program');
+    assert.strictEqual(await page.evaluate(() => location.hash), '#program=picked-file&resourcekey=picked-key');
+    assert.strictEqual(await page.$eval('#save-status', el => el.textContent), 'Loaded from Drive');
+    assert.strictEqual(await page.evaluate(() => BrowserGoogleAuth.current().access_token), 'recipient-token');
+    assert.ok(requests.some(r => r.url.includes('/picked-file') &&
+      r.headers.authorization === 'Bearer recipient-token' &&
+      r.headers['x-goog-drive-resource-keys'] === 'picked-file/picked-key'));
   });
 
   it('does not adopt or report a loaded file when content downloads are forbidden', async function() {
