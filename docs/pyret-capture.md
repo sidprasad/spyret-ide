@@ -44,6 +44,12 @@ without upgrading the pinned Core 6.0.1 layout/UI bundles in the same change.
 API. The new integration checks import all 86 enabled existing corpus examples
 in a fresh headless realm, inspect dictionary sharing, check nested errors, and
 invoke the real display module with the browser REPL global removed.
+Both CI seeds also run the new capture path through 100 generated values and
+20 generated datatype declarations (all variant witnesses plus generated values).
+Reconstruction happens in the headless consumer; a separate Pyret runtime then
+checks exact inspection equality. Set `REIFY_SEED` and `REIFY_FUZZ_RUNS` to replay
+or expand the value PBTs. Core separately checks 2,000 generated graphs for
+identity and topology preservation, which inspection equality alone cannot show.
 
 Core additionally builds and tests upstream Pyret revision
 `6e62dcda5298606aa0abe66a372c4eb17a38db85`: 23 real runtime roots imported in a

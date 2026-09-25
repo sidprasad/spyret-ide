@@ -4,8 +4,16 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const fc = require('fast-check');
 const { start } = require('../pyret-round-trip/harness');
-const { PRELUDE, ROWS } = require('../reify-fidelity/corpus');
+const { PRELUDE, ROWS, arbitraries } = require('../reify-fidelity/corpus');
+const { schemaArbitrary } = require('../constructor-data/corpus');
+
+const NUM_RUNS = Number(process.env.REIFY_FUZZ_RUNS || 100);
+const SEED = Number(process.env.REIFY_SEED || 1);
+if (!Number.isSafeInteger(NUM_RUNS) || NUM_RUNS < 1 || !Number.isInteger(SEED)) {
+  throw new Error('REIFY_FUZZ_RUNS must be positive and REIFY_SEED must be an integer');
+}
 
 // A fresh realm has no window, document, Pyret runtime, REPL or producer caches.
 const consumer = vm.createContext({});
@@ -29,6 +37,28 @@ describe('Portable capture used by Spyret-IDE', function () {
     return api.importPyretCapture(JSON.parse(JSON.stringify(result.snapshot)));
   }
 
+  async function checkRoundTrip(expr, prelude) {
+    const initialized = await session.ide.page.evaluate(p => window.__reifyFidelity.init(p), prelude);
+    assert.ok(initialized.ok, initialized.error);
+    const result = await session.ide.page.evaluate(e => window.__reifyFidelity.capturePortableCase(e), expr);
+    assert.strictEqual(result.verdict, 'captured', JSON.stringify(result));
+    // The headless consumer receives neither source nor the expected output.
+    for (const root of result.snapshot.roots) delete root.observation;
+    const { snapshot, instance } = api.importPyretCapture(JSON.parse(JSON.stringify(result.snapshot)));
+    const source = api.pyretCaptureSource(instance, snapshot.roots[0].atomId);
+    const expected = await session.ide.page.evaluate(e => window.__reifyFidelity.inspectExpression(e), expr);
+    assert.strictEqual(expected.verdict, 'inspected', JSON.stringify(expected));
+    const decoder = session.ide.decoder;
+    const ready = await decoder.evaluate(p => window.__reifyFidelity.init(p), prelude);
+    assert.ok(ready.ok, ready.error);
+    const actual = await decoder.evaluate(e => window.__reifyFidelity.inspectExpression(e), source);
+    assert.strictEqual(actual.verdict, 'inspected', JSON.stringify({ source, ...actual }));
+    assert.strictEqual(actual.B, expected.B, `Expression: ${expr}\nReconstructed: ${source}`);
+    const checked = await decoder.evaluate((a, b) => window.__reifyFidelity.checkStrings(a, b), expected.B, actual.B);
+    assert.strictEqual(checked.verdict, 'pass', JSON.stringify(checked));
+    assert.deepStrictEqual(checked.check, { blocks: 1, results: ['success'], errors: 0 });
+  }
+
   for (const row of ROWS.filter(row => row.expect === 'supported')) {
     it(`imports ${row.category}/${row.name} without a producing runtime`, async function () {
       const { snapshot, values } = await capture(row.expr);
@@ -50,6 +80,19 @@ describe('Portable capture used by Spyret-IDE', function () {
     assert.strictEqual(result.root, 'value');
     assert.deepStrictEqual(result.path, ['items', 0]);
     assert.match(result.reason, /function/);
+  });
+
+  it(`${NUM_RUNS} generated values preserve Pyret inspection through portable capture (seed ${SEED})`, async function () {
+    await fc.assert(fc.asyncProperty(arbitraries(fc).value, expr => checkRoundTrip(expr, PRELUDE)),
+      { numRuns: NUM_RUNS, seed: SEED, verbose: true });
+  });
+
+  it(`20 generated declarations preserve field order and constructor kind (seed ${SEED})`, async function () {
+    const schemas = schemaArbitrary(fc).chain(schema => schema.value.map(expr =>
+      ({ prelude: schema.prelude, expressions: [...schema.witnesses, expr] })));
+    await fc.assert(fc.asyncProperty(schemas, async ({ prelude, expressions }) => {
+      for (const expr of expressions) await checkRoundTrip(expr, prelude);
+    }), { numRuns: 20, seed: SEED, verbose: true });
   });
 
   it('the actual display module captures without consulting the REPL and preserves the selected root', async function () {
