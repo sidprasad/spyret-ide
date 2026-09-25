@@ -38,6 +38,7 @@ jobs:
         with:
           path: ide
           persist-credentials: false
+          submodules: true
 
       - name: Set up Node
         uses: actions/setup-node@v7
@@ -55,7 +56,8 @@ jobs:
             node --version
             npm --version
             google-chrome --version
-            node -p '"Pyret " + require("./package-lock.json").packages["node_modules/pyret-lang"].resolved'
+            git -C vendor/pyret-upstream log -1 --format='Standard Pyret %H'
+            test -z "$(git -C vendor/pyret-upstream status --porcelain --untracked-files=no)"
           } | tee build/constructor-data-ci/provenance.txt
 
       - name: Install locked IDE dependencies
@@ -72,7 +74,7 @@ jobs:
         env:
           ASSET_BASE_URL: http://localhost:4999
         run: |
-          ln -s node_modules/pyret-lang pyret
+          node src/scripts/prepare-pyret.js
           make -C pyret phaseA-deps
           npx --no-install webpack
           make web

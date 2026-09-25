@@ -2,7 +2,7 @@
  * Structured editing for SPyTIAL layout specs.
  *
  * A spec is YAML living inside a Pyret triple-backtick string, usually handed
- * to DR.genlayout from a value's _output method. This module lets you open
+ * to DR.show directly or from a value's _output method. This module lets you open
  * that YAML in spytial-core's spec editor (the "no-code builder") and write the
  * result back over the original text.
  *

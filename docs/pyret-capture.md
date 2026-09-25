@@ -10,9 +10,9 @@ live value + owning runtime
   -> existing layout and graph renderer
 ```
 
-Capture uses no REPL, `_output`, custom skeleton, or DOM. The IDE's existing
-display hook invokes it, but the same library works with standard Pyret in a
-headless process. The capture API, encoding, validation, and runtime adapter live
+Capture uses no REPL, `_output`, custom skeleton, or DOM. The IDE uses the
+unmodified upstream Pyret backend and a host display adapter; the same capture
+library works in a headless process. The encoding, validation, and runtime adapter live
 in Spytial-Core, not in this repository.
 
 The returned diagram container exposes `spytialCapture`, a detached,
@@ -58,8 +58,41 @@ program with same-named imported constructors, sharing, cycles and a throwing
 printer. The same runtime/program checks also pass against the current Spyret
 fork.
 
-The compiler dependency is intentionally unchanged. Removing the custom
-display hook and switching the whole IDE to upstream Pyret remain the later
-display migration in the [integration plan](spytial-library-plan.md).
+The compiler is pinned to the upstream `drydock` revision above by the
+`vendor/pyret-upstream` Git submodule. No source patches are applied. CI checks
+out that submodule, builds the IDE with it, and runs both PBT seeds. Browser
+tests explicitly require the fork-only `isVSConstrRender` hook to be absent.
+
+## Displaying values on standard Pyret
+
+```pyret
+import dom-render as DR
+data Tree: leaf | node(value, left, right) end
+DR.show(node(1, leaf, leaf), "")
+```
+
+`DR.show` wraps the rendered diagram in a standard Pyret opaque value. The IDE
+recognizes only its own display handles and inserts their DOM into the output
+pane. No compiler, runtime, FFI or ValueSkeleton extension is required. This
+host adapter and its DOM nodes are separate from the portable capture snapshot.
+The lower-level `DR.genlayout` remains available to JavaScript host callers.
+
+Existing custom printers should replace `vs-constr-render` with the standard
+`vs-value` variant:
+
+```pyret
+import dom-render as DR
+import valueskeleton as VS
+data Box: box(n) with:
+  method _output(self): VS.vs-value(DR.show(self, "")) end
+end
+box(42)
+```
+
+YAML specifications and the spec editor work with the same string literals.
+The library captures declared state directly, so custom printing does not
+re-enter `_output`. The static browser suite exercises both display forms through
+the actual Run button. Other user-facing design work remains in the
+[integration plan](spytial-library-plan.md).
 The [original audit](relationalization-audit.md) records the losses that motivated
 this implementation; its two legacy loss witnesses do not describe the new API.

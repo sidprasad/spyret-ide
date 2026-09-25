@@ -25,6 +25,8 @@ describe('Portable capture used by Spyret-IDE', function () {
   let session;
   before(async function () {
     session = await start();
+    assert.strictEqual(await session.ide.page.evaluate(() => typeof window.__internalRepl.runtime.ffi.isVSConstrRender),
+      'undefined', 'Portable capture PBTs must use the standard backend, not the Spyret fork');
     const result = await session.ide.page.evaluate(p => window.__reifyFidelity.init(p), PRELUDE);
     assert.ok(result.ok, result.error);
     assert.strictEqual(await session.ide.page.evaluate(() => typeof window.SpytialPyretCapture.capturePyret), 'function');

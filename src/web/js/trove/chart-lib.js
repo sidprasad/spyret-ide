@@ -4,7 +4,6 @@
     { 'import-type': 'builtin', 'name': 'image-lib' },
   ],
   nativeRequires: [
-    'pyret-base/js/js-numbers',
     'google-charts',
   ],
   provides: {
@@ -17,8 +16,9 @@
       'plot': "tany",
     }
   },
-  theModule: function (RUNTIME, NAMESPACE, uri, IMAGELIB, jsnums , google) {
+  theModule: function (RUNTIME, NAMESPACE, uri, IMAGELIB, google) {
   'use strict';
+  var jsnums = RUNTIME.jsnums;
   // Load google library via editor.html to avoid loading issues
 
   function notImp(name) {

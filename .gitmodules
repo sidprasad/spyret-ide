@@ -1,0 +1,4 @@
+[submodule "vendor/pyret-upstream"]
+	path = vendor/pyret-upstream
+	url = https://github.com/brownplt/pyret-lang.git
+	branch = drydock

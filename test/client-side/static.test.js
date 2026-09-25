@@ -81,6 +81,36 @@ describe('static client-only IDE', function() {
     await ide.page.waitForFunction(() => window.CPO && CPO.editor && !CPO.editor.cm.getOption('readOnly'));
     assert.strictEqual(await ide.page.evaluate(() => CPO.editor.cm.getValue()), '', 'An intentionally empty draft must stay empty');
   });
+
+  for (const customOutput of [false, true]) {
+    it(`renders a Spytial diagram on standard Pyret ${customOutput ? 'through _output' : 'through DR.show'}`, async function() {
+      await ide.page.waitForFunction(() => window.__internalRepl && !document.querySelector('#runButton').disabled);
+      assert.strictEqual(await ide.page.evaluate(() => typeof window.__internalRepl.runtime.ffi.isVSConstrRender), 'undefined',
+        'This test must run against the upstream backend without the fork renderer');
+      const source = 'import dom-render as DR\nimport valueskeleton as VS\n' + (customOutput
+        ? 'data Box: box(n) with:\n method _output(self): VS.vs-value(DR.show(self, "")) end\nend\nbox(42)'
+        : 'data Box: box(n) end\nDR.show(box(42), "")');
+      await ide.page.evaluate(code => CPO.editor.cm.setValue(code), source);
+      await ide.page.click('#runButton');
+      try {
+        await ide.page.waitForFunction(() => {
+          const graph = document.querySelector('#output webcola-cnd-graph');
+          return graph && graph.shadowRoot && graph.shadowRoot.querySelectorAll('g.node').length > 0;
+        }, {timeout: 30000});
+      } catch (error) {
+        throw new Error(error.message + '\n' + await ide.page.$eval('#output', el => el.textContent));
+      }
+      const result = await ide.page.evaluate(() => {
+        const graph = document.querySelector('#output webcola-cnd-graph');
+        const container = graph.parentElement.parentElement;
+        const imported = window.SpytialPyretCapture.importPyretCapture(container.spytialCapture);
+        return { value: imported.values.get('value').dict.n, source: container.querySelector('pre').textContent };
+      });
+      assert.strictEqual(result.value, 42);
+      assert.strictEqual(result.source, 'box(42)');
+      assert.deepStrictEqual(errors, []);
+    });
+  }
   it('imports a local file as a separate recoverable draft', async function() {
     const filename = path.resolve(__dirname, '../../build/local-import-test.arr');
     fs.writeFileSync(filename, 'use context starter2024\nlocal-answer = 42\n');

@@ -3,8 +3,8 @@
 Status: the relationalization API is implemented in Spytial-Core, verified
 against a pinned upstream Pyret runtime, and integrated into the IDE. See
 [the current implementation and verification](pyret-capture.md) and
-[the original boundary audit](relationalization-audit.md). The display migration
-and default compiler dependency switch remain deferred.
+[the original boundary audit](relationalization-audit.md). The IDE now uses the
+unmodified standard upstream backend and an IDE-owned display adapter.
 
 ## First scope: relationalization
 
@@ -400,7 +400,8 @@ the existing textual-fidelity tests.
 - Confirm relationalization needs neither the custom skeleton nor the IDE host.
 
 Deliverable: evidence of upstream compatibility and any remaining runtime gaps.
-Changing the default IDE dependency waits for the later display migration.
+The IDE now builds against that pinned, unmodified upstream backend. Its
+property-based tests and browser display tests are acceptance gates for the switch.
 
 ### Deferred: redesign the user-facing integration
 
@@ -412,7 +413,7 @@ Changing the default IDE dependency waits for the later display migration.
 
 These decisions should build on the relationalization contract established above.
 
-### Deferred: migrate the IDE and remove the fork dependency
+### Implemented: migrate the IDE and remove the fork dependency
 
 - Replace the `vs-constr-render` display path and migrate its consumers.
 - Update examples, specification editing, documentation, and dependency locks.
@@ -421,6 +422,9 @@ These decisions should build on the relationalization contract established above
   suite; compare results with the baseline.
 
 Deliverable: an upstream-based IDE with documented library and host boundaries.
+The implementation pins the official `drydock` source as a Git submodule and
+uses `DR.show` with standard opaque values and `VS.vs-value`, replacing the
+fork-only skeleton. See [the migration guide](pyret-capture.md).
 
 ## Relationalization validation criteria
 

@@ -443,7 +443,7 @@
       };
       window.replWidget = CPO.replWidget = replWidget;
 
-      // Exposing this for dom-render.js to use for input.
+      // Expose the evaluator for IDE integration tests; capture does not use it.
       window.__internalRepl = repl;
     
       /*

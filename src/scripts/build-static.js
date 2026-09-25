@@ -33,9 +33,7 @@ function build() {
   for (const key of Object.keys(env)) {
     if (/SECRET|TOKEN|REDIS|FIREBASE/.test(key)) { delete env[key]; }
   }
-  if (!fs.existsSync(path.join(root, 'pyret'))) {
-    fs.symlinkSync('node_modules/pyret-lang', path.join(root, 'pyret'));
-  }
+  require('./prepare-pyret').prepare();
   for (const [command, args] of [
     [process.execPath, ['node_modules/webpack/bin/webpack.js']],
     ['make', ['web', 'build/web/js/cpo-main.jarr']]

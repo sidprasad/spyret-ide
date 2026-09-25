@@ -1,12 +1,13 @@
 ({
     requires: [],
-    nativeRequires: [],
+    nativeRequires: ["cpo/spytial-view"],
     provides: {
         values: {
-            genlayout: ["arrow", [["RawArray", "Any"], "String"], "Any"],
+            genlayout: ["arrow", ["Any", "String"], "Any"],
+            show: ["arrow", ["Any", "String"], "Any"],
         }
     },
-    theModule: function (runtime, namespace, uri) {
+    theModule: function (runtime, namespace, uri, views) {
 
 
         function getSpytialCore() {
@@ -150,7 +151,11 @@
 
 
         return runtime.makeModuleReturn({
-            genlayout: runtime.makeFunction(genlayout)
+            genlayout: runtime.makeFunction(genlayout),
+            show: runtime.makeFunction(function (value, spec) {
+                runtime.checkString(spec);
+                return runtime.makeOpaque(views.make(genlayout(value, spec)));
+            })
         }, {});
     }
 })
