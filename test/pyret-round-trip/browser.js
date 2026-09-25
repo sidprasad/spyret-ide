@@ -272,7 +272,7 @@ function pageRuntime() {
       const a = await run(expr);
       if (!a.ok) return { verdict: 'value-error', error: a.error };
       try {
-        const api = window.SpytialPyretCapture;
+        const api = window.Spyret;
         const snapshot = api.capturePyret([{ name: 'value', value: a.answer, observation: { expression: expr } }],
           api.createPyretRuntimeAdapter(a.rt));
         return { verdict: 'captured', snapshot };

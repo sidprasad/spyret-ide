@@ -1,4 +1,4 @@
-name: Reproduce Core capture bundle
+name: Reproduce Spyret bundle
 on:
   pull_request:
   push:
@@ -21,9 +21,9 @@ jobs:
         run: node -e 'console.log("revision=" + require("./ide/lib/js/spytial-pyret-capture.json").revision)' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
-          repository: sidprasad/spytial-core
+          repository: sidprasad/spyret
           ref: ${{ steps.pin.outputs.revision }}
-          path: core
-      - run: npm ci --ignore-scripts && npm run build:pyret-capture
-        working-directory: core
-      - run: cmp core/dist/pyret-capture.global.js ide/lib/js/spytial-pyret-capture.js
+          path: spyret
+      - run: npm ci && npm run build
+        working-directory: spyret
+      - run: cmp spyret/dist/spyret.global.js ide/lib/js/spytial-pyret-capture.js

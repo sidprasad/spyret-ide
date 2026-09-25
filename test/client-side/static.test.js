@@ -117,7 +117,7 @@ describe('static client-only IDE', function() {
       const result = await ide.page.evaluate(() => {
         const graph = document.querySelector('#output webcola-cnd-graph');
         const container = graph.parentElement.parentElement;
-        const imported = window.SpytialPyretCapture.importPyretCapture(container.spytialCapture);
+        const imported = window.Spyret.importPyretCapture(container.spytialCapture);
         return { value: imported.values.get('value').dict.n, source: container.querySelector('pre').textContent,
           typeId: imported.values.get('value').$name,
           typeLabels: Array.from(graph.shadowRoot.querySelectorAll('.mostSpecificTypeLabel'), el => el.textContent) };

@@ -18,7 +18,7 @@ if (!Number.isSafeInteger(NUM_RUNS) || NUM_RUNS < 1 || !Number.isInteger(SEED)) 
 // A fresh realm has no window, document, Pyret runtime, REPL or producer caches.
 const consumer = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../../lib/js/spytial-pyret-capture.js'), 'utf8'), consumer);
-const api = consumer.SpytialPyretCapture;
+const api = consumer.Spyret;
 
 describe('Portable capture used by Spyret-IDE', function () {
   this.timeout(10 * 60 * 1000);
@@ -29,7 +29,7 @@ describe('Portable capture used by Spyret-IDE', function () {
       'undefined', 'Portable capture PBTs must use the standard backend, not the Spyret fork');
     const result = await session.ide.page.evaluate(p => window.__reifyFidelity.init(p), PRELUDE);
     assert.ok(result.ok, result.error);
-    assert.strictEqual(await session.ide.page.evaluate(() => typeof window.SpytialPyretCapture.capturePyret), 'function');
+    assert.strictEqual(await session.ide.page.evaluate(() => typeof window.Spyret.capturePyret), 'function');
   });
   after(async function () { if (session) await session.close(); });
 

@@ -1,6 +1,6 @@
 # Pyret capture in Spyret-IDE
 
-The diagram path now captures through Spytial-Core's portable Pyret API:
+The diagram path now captures through [Spyret's portable Pyret API](https://github.com/sidprasad/spyret):
 
 ```text
 live value + owning runtime
@@ -13,12 +13,12 @@ live value + owning runtime
 Capture uses no REPL, `_output`, custom skeleton, or DOM. The IDE uses the
 unmodified upstream Pyret backend and a host display adapter; the same capture
 library works in a headless process. The encoding, validation, and runtime adapter live
-in Spytial-Core, not in this repository.
+in Spyret, not in this repository.
 
 The returned diagram container exposes `spytialCapture`, a detached,
 JSON-serializable snapshot containing atoms/relations/types and an explicit
-named root. A consumer calls `SpytialPyretCapture.importPyretCapture(snapshot)`
-to obtain a data instance without the original value or runtime. The Core API
+named root. A consumer calls `Spyret.importPyretCapture(snapshot)`
+to obtain a data instance without the original value or runtime. The Spyret API
 also accepts multiple named roots captured together, preserving aliases across
 them, plus optional JSON observation/provenance metadata.
 
@@ -34,10 +34,10 @@ snapshot reconstructs structure, not executable closures or datatype bindings.
 
 ## Dependency and verification
 
-The independently built Core capture bundle is vendored in
+The independently built Spyret bundle is vendored in
 `lib/js/spytial-pyret-capture.js`, with its source revision, SHA-256 and licenses
 beside it. Regenerate it with `src/scripts/update-pyret-capture.js`. CI rebuilds
-that exact Core revision and compares the asset. This allows capture to evolve
+that exact Spyret revision and compares the asset. This allows capture to evolve
 without upgrading the pinned Core 6.0.1 layout/UI bundles in the same change.
 
 `npm run test:relationalization` checks the legacy baseline audit and the new
@@ -48,15 +48,15 @@ Both CI seeds also run the new capture path through 100 generated values and
 20 generated datatype declarations (all variant witnesses plus generated values).
 Reconstruction happens in the headless consumer; a separate Pyret runtime then
 checks exact inspection equality. Set `REIFY_SEED` and `REIFY_FUZZ_RUNS` to replay
-or expand the value PBTs. Core separately checks 2,000 generated graphs for
+or expand the value PBTs. Spyret separately checks 2,000 generated graphs for
 identity and topology preservation, which inspection equality alone cannot show.
 
-Core additionally builds and tests upstream Pyret revision
+Spyret additionally builds and tests upstream Pyret revision
 `6e62dcda5298606aa0abe66a372c4eb17a38db85`: 23 real runtime roots imported in a
 fresh Node process, ten unsupported-value diagnostics, and a compiled Pyret
 program with same-named imported constructors, sharing, cycles and a throwing
-printer. The same runtime/program checks also pass against the current Spyret
-fork.
+printer. Its Node PBT suite also checks generated values and declarations
+without loading Spyret-IDE.
 
 The compiler is pinned to the upstream `drydock` revision above by the
 `vendor/pyret-upstream` Git submodule. No source patches are applied. CI checks
