@@ -66,25 +66,25 @@ tests explicitly require the fork-only `isVSConstrRender` hook to be absent.
 ## Displaying values on standard Pyret
 
 ```pyret
-import dom-render as DR
+import spytial as SP
 data Tree: leaf | node(value, left, right) end
-DR.show(node(1, leaf, leaf), "")
+SP.diagram(node(1, leaf, leaf), "")
 ```
 
-`DR.show` wraps the rendered diagram in a standard Pyret opaque value. The IDE
+`SP.diagram` wraps the rendered diagram in a standard Pyret opaque value. The IDE
 recognizes only its own display handles and inserts their DOM into the output
 pane. No compiler, runtime, FFI or ValueSkeleton extension is required. This
 host adapter and its DOM nodes are separate from the portable capture snapshot.
-The lower-level `DR.genlayout` remains available to JavaScript host callers.
+The lower-level `SP.genlayout` remains available to JavaScript host callers.
 
 Existing custom printers should replace `vs-constr-render` with the standard
 `vs-value` variant:
 
 ```pyret
-import dom-render as DR
+import spytial as SP
 import valueskeleton as VS
 data Box: box(n) with:
-  method _output(self): VS.vs-value(DR.show(self, "")) end
+  method _output(self): VS.vs-value(SP.diagram(self, "")) end
 end
 box(42)
 ```

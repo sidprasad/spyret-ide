@@ -97,13 +97,13 @@ describe('static client-only IDE', function() {
   });
 
   for (const customOutput of [false, true]) {
-    it(`renders a Spytial diagram on standard Pyret ${customOutput ? 'through _output' : 'through DR.show'}`, async function() {
+    it(`renders a Spytial diagram on standard Pyret ${customOutput ? 'through _output' : 'through SP.diagram'}`, async function() {
       await ide.page.waitForFunction(() => window.__internalRepl && !document.querySelector('#runButton').disabled);
       assert.strictEqual(await ide.page.evaluate(() => typeof window.__internalRepl.runtime.ffi.isVSConstrRender), 'undefined',
         'This test must run against the upstream backend without the fork renderer');
-      const source = 'import dom-render as DR\nimport valueskeleton as VS\n' + (customOutput
-        ? 'data Box: box(n) with:\n method _output(self): VS.vs-value(DR.show(self, "")) end\nend\nbox(42)'
-        : 'data Box: box(n) end\nDR.show(box(42), "")');
+      const source = 'import spytial as SP\nimport valueskeleton as VS\n' + (customOutput
+        ? 'data Box: box(n) with:\n method _output(self): VS.vs-value(SP.diagram(self, "")) end\nend\nbox(42)'
+        : 'data Box: box(n) end\nSP.diagram(box(42), "")');
       await ide.page.evaluate(code => CPO.editor.cm.setValue(code), source);
       await ide.page.click('#runButton');
       try {
@@ -118,10 +118,15 @@ describe('static client-only IDE', function() {
         const graph = document.querySelector('#output webcola-cnd-graph');
         const container = graph.parentElement.parentElement;
         const imported = window.SpytialPyretCapture.importPyretCapture(container.spytialCapture);
-        return { value: imported.values.get('value').dict.n, source: container.querySelector('pre').textContent };
+        return { value: imported.values.get('value').dict.n, source: container.querySelector('pre').textContent,
+          typeId: imported.values.get('value').$name,
+          typeLabels: Array.from(graph.shadowRoot.querySelectorAll('.mostSpecificTypeLabel'), el => el.textContent) };
       });
       assert.strictEqual(result.value, 42);
       assert.strictEqual(result.source, 'box(42)');
+      assert.match(result.typeId, /^pyret:constructor:/, 'The portable snapshot retains nominal identity');
+      assert.ok(result.typeLabels.includes('box'), JSON.stringify(result.typeLabels));
+      assert.ok(!result.typeLabels.some(label => label.includes('pyret:constructor:')));
       assert.deepStrictEqual(errors, []);
     });
   }

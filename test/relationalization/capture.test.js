@@ -98,7 +98,7 @@ describe('Portable capture used by Spyret-IDE', function () {
   });
 
   it('the actual display module captures without consulting the REPL and preserves the selected root', async function () {
-    const initialized = await session.ide.page.evaluate(() => window.__reifyFidelity.init('import dom-render as DR\ndata Cell: cell(ref next) end'));
+    const initialized = await session.ide.page.evaluate(() => window.__reifyFidelity.init('import spytial as SP\ndata Cell: cell(ref next) end'));
     assert.ok(initialized.ok, initialized.error);
     // The helper closes over the evaluator needed to obtain a live fixture.
     // The display module itself must not consult the browser REPL global.

@@ -174,9 +174,9 @@ describe('Pyret inspection fidelity: working datum-only round trips', function (
       assert.ok(replay.received.atoms.every(atom => atom.id.startsWith('opaque-')));
     });
 
-    it('renders a cycle through Spyret’s actual dom-render module', async function () {
+    it('renders a cycle through Spyret’s actual spytial module', async function () {
       const initialized = await session.ide.page.evaluate(p => window.__reifyFidelity.init(p),
-        'import dom-render as DR\n' + PRELUDE);
+        'import spytial as SP\n' + PRELUDE);
       assert.ok(initialized.ok, initialized.error);
       const expr = ROWS.find(r => r.category === 'cycle' && r.name === 'ref-cycle').expr;
       const rendered = await session.ide.page.evaluate(e => window.__reifyFidelity.renderExpression(e), expr);

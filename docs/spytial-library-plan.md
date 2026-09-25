@@ -423,7 +423,7 @@ These decisions should build on the relationalization contract established above
 
 Deliverable: an upstream-based IDE with documented library and host boundaries.
 The implementation pins the official `drydock` source as a Git submodule and
-uses `DR.show` with standard opaque values and `VS.vs-value`, replacing the
+uses `SP.diagram` with standard opaque values and `VS.vs-value`, replacing the
 fork-only skeleton. See [the migration guide](pyret-capture.md).
 
 ## Relationalization validation criteria

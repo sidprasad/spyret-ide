@@ -20,13 +20,13 @@ Open http://localhost:4999/editor/. `npm start` is a local file server, with no 
 Use the IDE's display module with ordinary Pyret values:
 
 ```pyret
-import dom-render as DR
+import spytial as SP
 data Tree: leaf | node(value, left, right) end
-DR.show(node(1, leaf, leaf), "")
+SP.diagram(node(1, leaf, leaf), "")
 ```
 
-`DR.show(value, yaml-spec)` produces an interactive diagram in the output pane.
-For a datatype's custom `_output`, return `VS.vs-value(DR.show(self, spec))`
+`SP.diagram(value, yaml-spec)` produces an interactive diagram in the output pane.
+For a datatype's custom `_output`, return `VS.vs-value(SP.diagram(self, spec))`
 using the standard `valueskeleton` module. This replaces the fork-only
 `vs-constr-render` API. The YAML spec editor still edits the same string literals.
 See [capture and display integration](docs/pyret-capture.md).

@@ -4,7 +4,7 @@
     provides: {
         values: {
             genlayout: ["arrow", ["Any", "String"], "Any"],
-            show: ["arrow", ["Any", "String"], "Any"],
+            diagram: ["arrow", ["Any", "String"], "Any"],
         }
     },
     theModule: function (runtime, namespace, uri, views) {
@@ -73,6 +73,14 @@
                 );
                 const layoutResult = layoutInstance.generateLayout(dataInstance);
                 const currentInstanceLayout = layoutResult.layout;
+                // The pinned renderer displays mostSpecificType verbatim.
+                // Format a presentation copy after layout/selector evaluation;
+                // the snapshot and semantic layout retain nominal type IDs.
+                const displayLayout = Object.assign({}, currentInstanceLayout, {
+                    nodes: currentInstanceLayout.nodes.map(node => Object.assign({}, node, {
+                        mostSpecificType: capture.constructorDisplayName(node.mostSpecificType)
+                    }))
+                });
 
                 // String view
                 const stringView = document.createElement("pre");
@@ -116,7 +124,7 @@
                 container.appendChild(graphContainer);
 
                 // Render the graph layout
-                graphElement.renderLayout(currentInstanceLayout).then(() => {
+                graphElement.renderLayout(displayLayout).then(() => {
                     console.log("Graph layout rendered");
 
                     // Mount additional React components after rendering
@@ -152,7 +160,7 @@
 
         return runtime.makeModuleReturn({
             genlayout: runtime.makeFunction(genlayout),
-            show: runtime.makeFunction(function (value, spec) {
+            diagram: runtime.makeFunction(function (value, spec) {
                 runtime.checkString(spec);
                 return runtime.makeOpaque(views.make(genlayout(value, spec)));
             })

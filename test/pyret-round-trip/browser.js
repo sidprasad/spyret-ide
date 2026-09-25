@@ -5,7 +5,7 @@
  *
  * The IDE page exposes two things the harness needs: `window.__internalRepl`
  * (the REPL evaluator, installed by cpo-main.js) and `window.spytialcore`
- * (the pinned spytial-core bundle that dom-render.js diagrams with). Each case
+ * (the pinned spytial-core bundle that spytial.js diagrams with). Each case
  * uses separate producer and decoder pages:
  *
  *   1. evaluate the case once and inspect the live value -> A
@@ -292,7 +292,7 @@ function pageRuntime() {
       }
       try {
         PDI.clearGlobalConstructorCache();
-        // Exactly the constructor invocation in trove/dom-render.js. No
+        // Retain the released Core 6.0.1 baseline invocation. No
         // primitive-root adapter, synthetic wrapper or replacement encoding.
         const instance = new PDI(a.answer, {}, window.__internalRepl);
         row.datum = datumOf(instance);
@@ -327,7 +327,7 @@ function pageRuntime() {
       return { verdict: 'inspected', B: b.answer };
     },
     async renderExpression(expr) {
-      const r = await run('DR.genlayout(' + expr + ', "")');
+      const r = await run('SP.genlayout(' + expr + ', "")');
       if (!r.ok) return { verdict: 'render-eval-error', error: r.error };
       const container = r.answer;
       if (!container || !container.querySelector) return { verdict: 'render-error', error: 'No diagram container' };

@@ -21,8 +21,8 @@ Pyret check: B is A
 
 The producer evaluates the input expression once. Its reference string uses
 the runtime's `_torepr` printer, the implementation behind `torepr`. It then
-calls `new PyretDataInstance(value, {}, window.__internalRepl)`, exactly as
-`src/web/js/trove/dom-render.js` does. There is no primitive-root wrapper or
+calls `new PyretDataInstance(value, {}, window.__internalRepl)`, retaining the
+released Core 6.0.1 baseline. There is no primitive-root wrapper or
 test-specific structural conversion. The tests exercise these core calls in
 the editor runtime, not the graphical layout/rendering UI.
 

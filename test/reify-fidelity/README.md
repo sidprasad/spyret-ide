@@ -65,7 +65,7 @@ The two suites now differ in their **corpora**, not their transport or decoder:
 `constructor-data` samples the narrowly specified constructor domain, while
 this suite includes built-in collections, custom printing, and pending forms.
 The main round trips do not test graphical output. A separate smoke test invokes
-Spyret’s actual `dom-render` module on a cycle and checks that it displays both
+Spyret’s actual `spytial` module on a cycle and checks that it displays both
 reconstructed source and graph nodes.
 
 ## Running
