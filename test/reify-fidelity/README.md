@@ -1,5 +1,11 @@
 # Pyret inspection fidelity
 
+Current integration: the IDE's production diagrams use npm `spyret@0.1.1`
+and released Core `6.3.1`. This suite still measures Core's retained legacy
+Pyret APIs as a regression baseline; the production Spyret path is covered by
+`test/relationalization/capture.test.js` and the client display tests. Results
+below explicitly labeled 6.0.1 are historical measurements.
+
 This suite asks whether the working Pyret relationalizer preserves enough
 information to reproduce `torepr(v)` for a declared corpus. It uses the same
 [`../pyret-round-trip/harness.js`](../pyret-round-trip/harness.js) as the strict

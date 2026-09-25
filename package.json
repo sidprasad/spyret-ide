@@ -62,6 +62,7 @@
     "sha.js": "^2.4.11",
     "snap": "github:brownplt/Snap",
     "source-map": "^0.5.7",
+    "spyret": "0.1.1",
     "style-loader": "0.13.1",
     "supervisor": "^0.11.0",
     "uglify-js": "^3.19.3",
@@ -89,7 +90,8 @@
     "reify-fidelity-report": "node test/reify-fidelity/cli.js",
     "test:constructor-data": "mocha test/pyret-round-trip/*.test.js test/constructor-data/*.test.js",
     "test:constructor-data:unit": "mocha test/pyret-round-trip/*.test.js test/constructor-data/report.test.js test/reify-fidelity/report.test.js test/relationalization/bundle.test.js",
-    "constructor-data-report": "node test/constructor-data/cli.js"
+    "constructor-data-report": "node test/constructor-data/cli.js",
+    "update:spyret": "node src/scripts/update-pyret-capture.js"
   },
   "repository": {
     "type": "git",

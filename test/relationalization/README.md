@@ -12,7 +12,7 @@ Run `npm run test:relationalization` with the same prerequisites as the
 Chrome, and access to the pinned Core CDN assets. The constructor CI workflow
 runs this once (seed 1) and uploads the report with its other evidence.
 
-This is an audit of **released Core 6.0.1**, not a claim of complete fidelity.
+This is an audit of **released Core 6.3.1**, not a claim of complete fidelity.
 Nine structural checks exercise preservation; two explicitly named
 `[known loss]` checks demonstrate distinctions that disappear. When those losses
 are fixed, replace the characterization assertions with preservation assertions

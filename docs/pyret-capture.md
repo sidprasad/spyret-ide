@@ -34,11 +34,19 @@ snapshot reconstructs structure, not executable closures or datatype bindings.
 
 ## Dependency and verification
 
-The independently built Spyret bundle is vendored in
-`lib/js/spytial-pyret-capture.js`, with its source revision, SHA-256 and licenses
-beside it. Regenerate it with `src/scripts/update-pyret-capture.js`. CI rebuilds
-that exact Spyret revision and compares the asset. This allows capture to evolve
-without upgrading the pinned Core 6.0.1 layout/UI bundles in the same change.
+The IDE depends on published `spyret@0.1.1` through npm and its lockfile.
+`make web` (also used by the static build) copies the package's browser entry
+into `lib/js/spytial-pyret-capture.js` before serving it. The adjacent manifest
+records the npm tarball URL/integrity and browser SHA-256; the licenses come
+from the package. CI verifies that the checked-in asset exactly matches the
+installed npm release. No Spyret or Core source checkout is used.
+
+To update Spyret, run `npm install --ignore-scripts --save-exact spyret@VERSION`
+and `npm run update:spyret`, then commit the manifests and browser assets.
+The IDE currently uses published Core **6.3.1** for queries, layout, the graph
+component and spec editor. All three CDN assets are pinned to that release.
+Spyret supplies `prepareDiagram(value, runtime)` → `IDataInstance`; Core receives
+that instance. The integration requires no Core changes or unpublished APIs.
 
 `npm run test:relationalization` checks the legacy baseline audit and the new
 API. The new integration checks import all 86 enabled existing corpus examples

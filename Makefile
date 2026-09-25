@@ -133,6 +133,12 @@ COPY_JS := $(patsubst src/web/js/%.js,build/web/js/%.js,$(wildcard src/web/js/*.
 build/web/js/%.js: src/web/js/%.js
 	cp $< $@
 
+.PHONY: sync-spyret
+sync-spyret:
+	node src/scripts/update-pyret-capture.js
+
+lib/js/spytial-pyret-capture.js: sync-spyret
+
 COPY_LIB_JS := $(patsubst lib/js/%.js,build/web/js/%.js,$(wildcard lib/js/*.js))
 
 build/web/js/%.js: lib/js/%.js

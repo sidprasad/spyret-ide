@@ -37,7 +37,7 @@ function target(row, name, owner = row.rootId) {
   return ts[0][ts[0].length - 1];
 }
 
-describe('Relationalization boundary audit: released Core 6.0.1', function () {
+describe('Relationalization boundary audit: released Core 6.3.1', function () {
   this.timeout(10 * 60 * 1000);
   let session, currentContext, setupError;
   const captures = [], checks = [], contexts = [];
@@ -46,7 +46,7 @@ describe('Relationalization boundary audit: released Core 6.0.1', function () {
     plannedChecks = this.test.parent.tests.map(t => t.title);
     try {
       session = await start();
-      assert.strictEqual(session.metadata.coreVersion, '6.0.1', 'Re-audit after changing Core');
+      assert.strictEqual(session.metadata.coreVersion, '6.3.1', 'Re-audit after changing Core');
       await initialize('original', PRELUDE);
     } catch (e) { setupError = String(e); throw e; }
   });
@@ -181,7 +181,7 @@ describe('Relationalization boundary audit: released Core 6.0.1', function () {
     assert.notStrictEqual(rows[0][1], rows[1][1]);
   });
 
-  // Deliberate baseline-loss witnesses. Passing these documents a gap in 6.0.1;
+  // Deliberate baseline-loss witnesses. Passing these documents a gap in 6.3.1;
   // it does not claim desired fidelity. Replace them when Core fixes the loss.
   it('[known loss] different nominal constructors with the same spelling export identically', async function () {
     const left = await capture('nominal-left', 'left-type.make(1)');

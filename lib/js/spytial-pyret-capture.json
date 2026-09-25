@@ -1,11 +1,7 @@
 {
-  "repository": "https://github.com/sidprasad/spyret",
-  "revision": "275ff0762b2c12ad8afc449c5139b45692736529",
-  "version": "0.1.0",
-  "core": {
-    "version": "6.3.2",
-    "source": "git+https://github.com/sidprasad/spytial-core.git#294b69ed209cc4b81c0bccdb4c7b8663f776ac4b"
-  },
-  "build": "npm ci && npm run build",
-  "sha256": "781e91ce258ccaab3207a803e4f94744be59b16cea4acbeea7501f652b991d06"
+  "package": "spyret",
+  "version": "0.1.1",
+  "resolved": "https://registry.npmjs.org/spyret/-/spyret-0.1.1.tgz",
+  "integrity": "sha512-r110rSglm1yvBGAOx9o+mM3DeexQSBOe2T/I7PiO0594XMyIRLdlQCXjZRVbb41lfSuWFFI/Y5lxTk/fVzYcmw==",
+  "sha256": "9ae605f5e64ac6301db1d9ec2a793688eadb4162d50100de5b7b60ffb7138cec"
 }

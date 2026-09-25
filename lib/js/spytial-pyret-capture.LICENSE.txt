@@ -1,8 +1,3 @@
-Spyret
-Author: Siddhartha Prasad
-License: MIT (declared in package.json)
-Source: https://github.com/sidprasad/spyret/tree/275ff0762b2c12ad8afc449c5139b45692736529
-
 MIT License
 
 Copyright (c) 2026 Siddhartha Prasad
@@ -25,11 +20,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-
-Spytial-Core 6.3.2
+Spyret's adapter helpers and data contracts originate in Spytial-Core.
 Author: Siddhartha Prasad
-License: MIT (declared in package.json)
-Source: git+https://github.com/sidprasad/spytial-core.git#294b69ed209cc4b81c0bccdb4c7b8663f776ac4b
+License: MIT (declared by the source package)
+Source: https://github.com/sidprasad/spytial-core
+Contracts verified against spytial-core 6.3.1.
+No Core runtime or renderer is included.
+
+---
 
 graphlib
 
@@ -53,6 +51,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
+
+---
 
 lodash
 

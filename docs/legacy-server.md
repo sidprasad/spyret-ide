@@ -169,7 +169,7 @@ Spyret's actual Pyret runtime, see
 the datum without a producer cache, evaluates the reified expression in fresh
 Pyret interactions, and compares `torepr` strings with an actual Pyret check.
 There is no replacement relationalizer. The editor and PR CI use the released
-spytial-core **6.0.1** CDN bundles. Both the fixed regression suite and the
+spytial-core **6.3.1** CDN bundles. Both the fixed regression suite and the
 strict measurement require exact matches for every planned constructor-data
 fixture; any mismatch or incomplete run fails. The documented 4.4.3 failures
 are historical measurements, not accepted failures in the current suite.

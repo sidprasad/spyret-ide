@@ -32,6 +32,12 @@ async function start() {
         || metadata.artifacts.filter(a => /spytial-core@/.test(a.url)).length !== 3) {
       throw new Error('Could not identify the loaded Pyret/core artifacts');
     }
+    const spyret = require('../../lib/js/spytial-pyret-capture.json');
+    const capture = metadata.artifacts.find(a => /\/spytial-pyret-capture\.js(?:\?|$)/.test(a.url));
+    if (!capture || capture.sha256 !== spyret.sha256) {
+      throw new Error('The browser must load the locked, published Spyret package');
+    }
+    metadata.spyretVersion = spyret.version;
     return { ide, metadata, async close() {
       try { await ide.browser.close(); } finally { server.stop(); }
     } };

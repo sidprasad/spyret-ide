@@ -43,10 +43,10 @@
             try {
                 const core = getSpytialCore();
 
-                // Spytial core layout logic
-                const capture = window.Spyret;
-                if (!capture) throw new Error("The Pyret capture library is unavailable.");
-                const prepared = capture.prepareDiagram(v, runtime);
+                // Spyret owns Pyret adaptation; Core receives only IDataInstance.
+                const spyret = window.Spyret;
+                if (!spyret) throw new Error("The Spyret package is unavailable.");
+                const prepared = spyret.prepareDiagram(v, runtime);
                 const dataInstance = prepared.instance;
                 container.spytialCapture = prepared.snapshot;
                 const evaluator = new core.Evaluators.SGraphQueryEvaluator();
@@ -63,7 +63,7 @@
                 );
                 const layoutResult = layoutInstance.generateLayout(dataInstance);
                 const currentInstanceLayout = layoutResult.layout;
-                const displayLayout = capture.diagramTypeNames(currentInstanceLayout);
+                const displayLayout = spyret.diagramTypeNames(currentInstanceLayout);
 
                 // String view
                 const stringView = document.createElement("pre");

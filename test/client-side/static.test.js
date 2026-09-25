@@ -41,6 +41,12 @@ describe('static client-only IDE', function() {
   });
   it('runs the real compiler and Spytial without application endpoints', async function() {
     assert.strictEqual(await ide.page.evaluate(() => window.CLIENT_SIDE), true);
+    assert.strictEqual(await ide.page.evaluate(() => window.spytialcore.version), '6.3.1');
+    const servedSpyret = await ide.page.evaluate(async () => {
+      const script = document.querySelector('script[src$="/spytial-pyret-capture.js"]');
+      return (await fetch(script.src)).text();
+    });
+    assert.strictEqual(servedSpyret, fs.readFileSync(require.resolve('spyret/global'), 'utf8'));
     const initialized = await ide.page.evaluate(() => window.__reifyFidelity.init('x = 21'));
     assert.strictEqual(initialized.ok, true, JSON.stringify(initialized));
     const evaluated = await ide.page.evaluate(() => window.__reifyFidelity.inspectExpression('x * 2'));
@@ -101,6 +107,12 @@ describe('static client-only IDE', function() {
       await ide.page.waitForFunction(() => window.__internalRepl && !document.querySelector('#runButton').disabled);
       assert.strictEqual(await ide.page.evaluate(() => typeof window.__internalRepl.runtime.ffi.isVSConstrRender), 'undefined',
         'This test must run against the upstream backend without the fork renderer');
+      await ide.page.evaluate(() => {
+        // Rendering must use Spyret even if Core drops its legacy Pyret adapter.
+        window.spytialcore = Object.assign({}, window.spytialcore, {
+          PyretDataInstance: function () { throw new Error('IDE must use the Spyret package for Pyret adaptation'); }
+        });
+      });
       const source = 'import spytial as SP\nimport valueskeleton as VS\n' + (customOutput
         ? 'data Box: box(n) with:\n method _output(self): VS.vs-value(SP.diagram(self, "")) end\nend\nbox(42)'
         : 'data Box: box(n) end\nSP.diagram(box(42), "")');
