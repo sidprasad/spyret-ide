@@ -82,6 +82,20 @@ describe('static client-only IDE', function() {
     assert.strictEqual(await ide.page.evaluate(() => CPO.editor.cm.getValue()), '', 'An intentionally empty draft must stay empty');
   });
 
+  it('renders standard numeric and collection output after the backend switch', async function() {
+    await ide.page.waitForFunction(() => window.__internalRepl && !document.querySelector('#runButton').disabled);
+    await ide.page.evaluate(() => CPO.editor.cm.setValue('[list: 1/3, ~1.5, 12345678901234567890, {1; 2}, nothing]'));
+    await ide.page.click('#runButton');
+    await ide.page.waitForFunction(() => document.querySelector('#output').textContent.includes('12345678901234567890'));
+    // Rationals initially show a repeating decimal; clicking exposes the exact fraction.
+    await ide.page.click('#output .rationalNumber');
+    const output = await ide.page.$eval('#output', el => el.textContent);
+    assert.match(output, /1\/3/);
+    assert.match(output, /~1\.5/);
+    assert.match(output, /nothing/);
+    assert.ok(!output.includes('error displaying'), output);
+  });
+
   for (const customOutput of [false, true]) {
     it(`renders a Spytial diagram on standard Pyret ${customOutput ? 'through _output' : 'through DR.show'}`, async function() {
       await ide.page.waitForFunction(() => window.__internalRepl && !document.querySelector('#runButton').disabled);
