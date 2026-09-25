@@ -43,14 +43,24 @@
                 const core = getSpytialCore();
 
                 // Spytial core layout logic
-                const dataInstance = new core.PyretDataInstance(v, {}, window.__internalRepl);
+                const capture = window.SpytialPyretCapture;
+                if (!capture) throw new Error("The Pyret capture library is unavailable.");
+                const snapshot = capture.capturePyret([{ name: "value", value: v }],
+                    capture.createPyretRuntimeAdapter(runtime));
+                const imported = capture.importPyretCapture(snapshot);
+                const dataInstance = imported.instance;
+                // Host callers can serialize this detached snapshot, including
+                // the selected root, without retaining runtime capabilities.
+                container.spytialCapture = snapshot;
                 const evaluationContext = { sourceData: dataInstance };
                 const evaluator = new core.Evaluators.SGraphQueryEvaluator();
                 evaluator.initialize(evaluationContext);
-                // The input is visited before its children. Keep the selected
-                // root outside IDataInstance, including for fully cyclic data.
-                const rootId = dataInstance.getAtoms()[0].id;
-                const r = dataInstance.reify(rootId);
+                const rootId = imported.snapshot.roots[0].atomId;
+                // A structurally valid graph can lack executable source (for
+                // example, same-named constructors from different modules).
+                let r;
+                try { r = capture.pyretCaptureSource(dataInstance, rootId); }
+                catch (error) { r = "Source preview unavailable: " + (error.message || error); }
                 const layoutSpec = parseLayoutSpecSafe(core, cndSpec);
                 const ENABLE_ALIGNMENT_EDGES = true;
                 const instanceNumber = 0;

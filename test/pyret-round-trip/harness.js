@@ -18,7 +18,7 @@ async function start() {
     // The runtime can come from a different build or a supplied BASE_URL.
     metadata.artifacts = await ide.page.evaluate(async () => {
       const urls = [...new Set(performance.getEntriesByType('resource').map(r => r.name))]
-        .filter(u => /cpo-main\.jarr|spytial-core@.*\.(?:js|css)(?:\?|$)/.test(u));
+        .filter(u => /cpo-main\.jarr|spytial-core@.*\.(?:js|css)(?:\?|$)|\/spytial-pyret-capture\.js(?:\?|$)/.test(u));
       return Promise.all(urls.map(async url => {
         const response = await fetch(url);
         if (!response.ok) throw new Error('Cannot fingerprint ' + url);

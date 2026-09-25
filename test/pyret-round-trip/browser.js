@@ -208,6 +208,10 @@ function pageRuntime() {
   }
 
   let counter = 0;
+  // Audit witnesses only. These identities are never part of the datum sent to
+  // the consumer, and never influence capture or reconstruction.
+  const observedConstructors = new WeakMap();
+  let nextConstructor = 0;
   async function run(code) {
     counter += 1;
     return unwrap(await repl.run(code, 'interactions://reify-fidelity-' + counter));
@@ -237,6 +241,44 @@ function pageRuntime() {
         throw new Error('All three editor CDN pins must agree with the loaded core version');
       }
       return version;
+    },
+    // Audit-only path: evaluation obtains the fixture, then capture receives
+    // only the live value. No evaluator, printer, skeleton, or DOM is supplied.
+    // Keep this separate from exportWorkingCase, which measures torepr fidelity.
+    async captureWorkingCase(expr) {
+      const a = await run(expr);
+      if (!a.ok) return { verdict: 'value-error', error: a.error };
+      try {
+        PDI.clearGlobalConstructorCache();
+        const instance = new PDI(a.answer);
+        const datum = datumOf(instance);
+        // A measured legacy convention, NOT a proposed public root API.
+        const rootId = instance.getAtoms()[0].id;
+        const ctor = a.answer && a.answer.$constructor;
+        let inputObservation;
+        if (ctor && (typeof ctor === 'object' || typeof ctor === 'function')) {
+          if (!observedConstructors.has(ctor)) observedConstructors.set(ctor, ++nextConstructor);
+          inputObservation = { constructorIdentity: observedConstructors.get(ctor),
+            name: a.answer.$name, arity: a.answer.$arity, brands: Object.keys(a.answer.brands || {}) };
+        }
+        return { verdict: 'captured', datum, rootId, inputObservation };
+      } catch (e) {
+        return { verdict: 'relationalize-error', error: String(e) };
+      } finally {
+        PDI.clearGlobalConstructorCache();
+      }
+    },
+    async capturePortableCase(expr) {
+      const a = await run(expr);
+      if (!a.ok) return { verdict: 'value-error', error: a.error };
+      try {
+        const api = window.SpytialPyretCapture;
+        const snapshot = api.capturePyret([{ name: 'value', value: a.answer, observation: { expression: expr } }],
+          api.createPyretRuntimeAdapter(a.rt));
+        return { verdict: 'captured', snapshot };
+      } catch (error) {
+        return { verdict: 'capture-error', error: String(error), root: error.root, path: error.path, reason: error.reason };
+      }
     },
     async exportWorkingCase(expr) {
       const a = await run(expr);
@@ -303,7 +345,7 @@ function pageRuntime() {
         }
         const source = container.querySelector('pre');
         return { verdict: nodes && source ? 'rendered' : 'render-error', nodes,
-          R: source && source.textContent };
+          R: source && source.textContent, snapshot: container.spytialCapture };
       } finally { container.remove(); }
     },
     async checkStrings(expected, actual) {

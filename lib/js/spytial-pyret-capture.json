@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/sidprasad/spytial-core",
+  "revision": "bc1b3ccfe4559b47e1e98484e30262d89e8d4acb",
+  "build": "npm ci && npm run build:pyret-capture",
+  "sha256": "c5714e9587dc39276b45d2155c880495c89350cbc7ee188feeca1c53afdf1f0f"
+}
