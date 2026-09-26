@@ -6,7 +6,7 @@ const { fixtures } = require('./corpus');
 const { start, runCase } = require('../pyret-round-trip/harness');
 const { writeReport } = require('./report');
 
-describe('Spyret working relationalizer/reifier: released 6.3.1', function () {
+describe('Spyret working relationalizer/reifier: released 6.3.2', function () {
   this.timeout(30 * 60 * 1000);
   const cases = fixtures();
   const rows = [], errors = [];
@@ -14,7 +14,7 @@ describe('Spyret working relationalizer/reifier: released 6.3.1', function () {
   before(async function () {
     try {
       session = await start();
-      assert.strictEqual(session.metadata.coreVersion, '6.3.1', 'Re-measure after a core upgrade');
+      assert.strictEqual(session.metadata.coreVersion, '6.3.2', 'Re-measure after a core upgrade');
     } catch (e) { errors.push(String(e)); throw e; }
   });
   afterEach(function () {

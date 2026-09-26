@@ -30,8 +30,8 @@ For a datatype's custom `_output`, return `VS.vs-value(SP.diagram(self, spec))`
 using the standard `valueskeleton` module. This replaces the fork-only
 `vs-constr-render` API. The YAML spec editor still edits the same string literals.
 Pyret adaptation comes from published `spyret@0.1.1`; queries, layout and
-rendering use published `spytial-core@6.3.1`. The build copies the locked Spyret
-npm browser entry automatically. No Core patch or source checkout is required.
+rendering use published `spytial-core@6.3.2`. The build copies the locked Spyret
+npm browser entry automatically. No local Core patch or source checkout is required.
 See [capture and display integration](docs/pyret-capture.md).
 
 The editor works without Google configuration. File → Open local file imports a program, edits are saved on this device as local drafts, and File → Download exports it. Drafts belong to the browser and origin; clearing site data removes them. A storage failure is shown explicitly. Reloading an unsaved draft restores it; File → New opens a separate draft.

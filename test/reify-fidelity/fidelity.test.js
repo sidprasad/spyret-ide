@@ -45,7 +45,7 @@ describe('Pyret inspection fidelity: working datum-only round trips', function (
   before(async function () {
     try {
       session = await start();
-      assert.strictEqual(session.metadata.coreVersion, '6.3.1', 'Re-measure after a core upgrade');
+      assert.strictEqual(session.metadata.coreVersion, '6.3.2', 'Re-measure after a core upgrade');
     } catch (e) { errors.push(String(e)); throw e; }
   });
 

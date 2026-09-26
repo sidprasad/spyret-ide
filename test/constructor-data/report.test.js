@@ -13,7 +13,7 @@ describe('Released core integration configuration', function () {
       'browser/spytial-core-complete.global.js',
       'components/react-component-integration.global.js',
       'components/react-component-integration.css',
-    ].map(file => 'https://cdn.jsdelivr.net/npm/spytial-core@6.3.1/dist/' + file));
+    ].map(file => 'https://cdn.jsdelivr.net/npm/spytial-core@6.3.2/dist/' + file));
   });
   it('includes all 33 fixed fixtures without needing a local-core override', function () {
     const cases = fixtures();

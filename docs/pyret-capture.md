@@ -43,10 +43,11 @@ installed npm release. No Spyret or Core source checkout is used.
 
 To update Spyret, run `npm install --ignore-scripts --save-exact spyret@VERSION`
 and `npm run update:spyret`, then commit the manifests and browser assets.
-The IDE currently uses published Core **6.3.1** for queries, layout, the graph
+The IDE currently uses published Core **6.3.2** for queries, layout, the graph
 component and spec editor. All three CDN assets are pinned to that release.
 Spyret supplies `prepareDiagram(value, runtime)` → `IDataInstance`; Core receives
-that instance. The integration requires no Core changes or unpublished APIs.
+that instance. The adapter integration requires no Core API changes or unpublished entry points.
+Core 6.3.2 also fixes zoom-animation cleanup when a diagram is removed.
 
 `npm run test:relationalization` checks the legacy baseline audit and the new
 API. The new integration checks import all 86 enabled existing corpus examples

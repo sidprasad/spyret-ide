@@ -41,7 +41,7 @@ describe('static client-only IDE', function() {
   });
   it('runs the real compiler and Spytial without application endpoints', async function() {
     assert.strictEqual(await ide.page.evaluate(() => window.CLIENT_SIDE), true);
-    assert.strictEqual(await ide.page.evaluate(() => window.spytialcore.version), '6.3.1');
+    assert.strictEqual(await ide.page.evaluate(() => window.spytialcore.version), '6.3.2');
     const servedSpyret = await ide.page.evaluate(async () => {
       const script = document.querySelector('script[src$="/spytial-pyret-capture.js"]');
       return (await fetch(script.src)).text();
