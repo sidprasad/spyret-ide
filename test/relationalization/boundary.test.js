@@ -86,7 +86,7 @@ describe('Relationalization boundary audit: released Core 6.3.2', function () {
     // neither source, live objects, declaration context, nor a producer cache.
     const received = await session.ide.decoder.evaluate(json => {
       const core = window.spytialcore;
-      core.PyretDataInstance.clearGlobalConstructorCache();
+      window.Spyret.PyretDataInstance.clearGlobalConstructorCache();
       const packet = JSON.parse(json);
       packet.datum.atoms.reverse();
       packet.datum.relations.reverse();

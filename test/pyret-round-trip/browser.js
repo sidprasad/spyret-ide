@@ -5,7 +5,8 @@
  *
  * The IDE page exposes two things the harness needs: `window.__internalRepl`
  * (the REPL evaluator, installed by cpo-main.js) and `window.spytialcore`
- * (the pinned spytial-core bundle that spytial.js diagrams with). Each case
+ * (the pinned Core bundle used for normalization) and `window.Spyret`
+ * (the maintained Pyret adapter). Each case
  * uses separate producer and decoder pages:
  *
  *   1. evaluate the case once and inspect the live value -> A
@@ -149,7 +150,7 @@ async function openIde(baseUrl, pageCount = 2, options = {}) {
           const loader = document.getElementById('loader');
           return loader && getComputedStyle(loader).display === 'none'
             && window.__internalRepl
-            && window.spytialcore && window.spytialcore.PyretDataInstance;
+            && window.spytialcore && window.Spyret && window.Spyret.PyretDataInstance;
         }, { timeout: options.timeout || 180000, polling: 100 });
       } catch (e) {
         throw new Error(`IDE readiness failed: ${e.message}\n${errors.slice(-10).join('\n')}`);
@@ -169,7 +170,7 @@ async function openIde(baseUrl, pageCount = 2, options = {}) {
 function pageRuntime() {
   const repl = window.__internalRepl;
   const rt0 = repl.runtime;
-  const PDI = window.spytialcore.PyretDataInstance;
+  const PDI = window.Spyret.PyretDataInstance;
 
   function safeRepr(rt, v) {
     try { return rt.toReprJS(v, rt.ReprMethods._torepr); }
@@ -292,8 +293,8 @@ function pageRuntime() {
       }
       try {
         PDI.clearGlobalConstructorCache();
-        // Retain the released Core 6.0.1 baseline invocation. No
-        // primitive-root adapter, synthetic wrapper or replacement encoding.
+        // Preserve the historical invocation against Spyret-owned adapter code.
+        // No primitive-root wrapper or replacement encoding.
         const instance = new PDI(a.answer, {}, window.__internalRepl);
         row.datum = datumOf(instance);
         // The relationalizer visits the input before its children. Select that
