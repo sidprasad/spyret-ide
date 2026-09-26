@@ -1,8 +1,7 @@
 # Working Spyret → Spytial → Spyret round trip
 
 Current integration: the IDE's production diagrams use npm `spyret@0.1.1`
-and released Core `6.3.2`. This suite still measures Core's retained legacy
-Pyret APIs as a regression baseline; the production Spyret path is covered by
+and released Core `6.3.2`. This suite measures the legacy `PyretDataInstance` API now owned by Spyret; the production Spyret path is covered by
 `test/relationalization/capture.test.js` and the client display tests. Results
 below explicitly labeled 6.0.1 are historical measurements.
 
@@ -19,7 +18,7 @@ differ; their production calls, JSON normalization, and isolation rules do not.
 ```text
 same live Pyret value ── torepr ─────────────────────────────────── A
                      └─ PyretDataInstance ── serialized datum
-                        └─ JSONDataInstance ── core reify ── expression
+                        └─ Core JSONDataInstance ── Spyret reify ── expression
                            └─ fresh Pyret interactions ── torepr ── B
 
 Pyret check: B is A
@@ -28,18 +27,18 @@ Pyret check: B is A
 The producer evaluates the input expression once. Its reference string uses
 the runtime's `_torepr` printer, the implementation behind `torepr`. It then
 calls `new PyretDataInstance(value, {}, window.__internalRepl)`, retaining the
-released Core 6.0.1 baseline. There is no primitive-root wrapper or
-test-specific structural conversion. The tests exercise these core calls in
+historical 6.0.1 invocation through Spyret. There is no primitive-root wrapper or
+test-specific structural conversion. The tests exercise these adapter calls in
 the editor runtime, not the graphical layout/rendering UI.
 
 JSON `atoms`, `relations`, and `types`, plus a separately selected root ID,
 cross to a separate editor page. The root ID is an argument, not datum metadata.
-The decoder resets its interactions to `nothing` and clears the core's global
+The decoder resets its interactions to `nothing` and clears Spyret's global
 constructor cache before reification. It constructs a `JSONDataInstance` with
 default normalization, then applies the working `PyretDataInstance` reifier to
 that fresh datum. The explicit `PDI.prototype.reify.call(fresh, rootId)` selects the
-same core class whose cache was cleared; editor bundles can expose more than
-one copy. No producer value, original expression, reference string, declaration
+same Spyret class whose cache was cleared; the browser keeps the adapter
+separate from Core. No producer value, original expression, reference string, declaration
 schema, or seeded field-order cache is passed to this call.
 
 **Only after the reifier has returned its expression** are the original

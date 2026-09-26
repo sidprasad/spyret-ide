@@ -52,7 +52,7 @@ describe('Spyret working relationalizer/reifier: released 6.3.2', function () {
     const replay = JSON.parse(JSON.stringify(row.datum));
     replay.relations.reverse();
     await session.ide.decoder.evaluate(() => {
-      new window.spytialcore.PyretDataInstance({ $name: 'duo', dict: { zebra: 0, alpha: 0 } });
+      new window.Spyret.PyretDataInstance({ $name: 'duo', dict: { zebra: 0, alpha: 0 } });
     });
     const r = await session.ide.decoder.evaluate((d, root) => window.__reifyFidelity.reifyWorkingDatum(d, root), replay, row.rootId);
     assert.strictEqual(r.verdict, 'reified', JSON.stringify(r));

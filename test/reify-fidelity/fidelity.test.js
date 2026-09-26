@@ -146,7 +146,7 @@ describe('Pyret inspection fidelity: working datum-only round trips', function (
       const payload = JSON.parse(JSON.stringify(r.datum));
       payload.relations.reverse();
       await session.ide.decoder.evaluate(() => {
-        const PDI = window.spytialcore.PyretDataInstance;
+        const PDI = window.Spyret.PyretDataInstance;
         new PDI({ $name: 'node', dict: { l: 0, r: 0, v: 0 } });
       });
       const again = await replayDatum(session, payload, PRELUDE, r.rootId);

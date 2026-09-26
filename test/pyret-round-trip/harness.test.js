@@ -117,7 +117,7 @@ function browserFixture(value) {
     getTypes() { return this.datum.types; }
     getErrors() { return []; }
   }
-  const window = { __internalRepl: repl, spytialcore: { PyretDataInstance: PDI, JSONDataInstance: JSONDI } };
+  const window = { __internalRepl: repl, Spyret: { PyretDataInstance: PDI }, spytialcore: { JSONDataInstance: JSONDI } };
   vm.runInNewContext(`(${pageRuntime.toString()})()`, { window });
   return { api: window.__reifyFidelity, repl, calls, cache, datum };
 }

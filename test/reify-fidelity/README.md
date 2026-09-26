@@ -1,8 +1,7 @@
 # Pyret inspection fidelity
 
 Current integration: the IDE's production diagrams use npm `spyret@0.1.1`
-and released Core `6.3.2`. This suite still measures Core's retained legacy
-Pyret APIs as a regression baseline; the production Spyret path is covered by
+and released Core `6.3.2`. This suite measures the legacy `PyretDataInstance` API now owned by Spyret; the production Spyret path is covered by
 `test/relationalization/capture.test.js` and the client display tests. Results
 below explicitly labeled 6.0.1 are historical measurements.
 
@@ -16,7 +15,7 @@ producer page: value -> torepr -----------------------------------------> A
 producer page: value -> PyretDataInstance -> JSON datum
                                                 |
 decoder page:                                   v
-                       JSONDataInstance -> core reify -> eval -> torepr -> B
+                       Core JSONDataInstance -> Spyret reify -> eval -> torepr -> B
 ```
 
 The reifier receives only the serialized datum and a separate root atom ID.
@@ -38,7 +37,7 @@ The decoder first resets its interactions to `nothing`. With constructor
 caches cleared, it normalizes the serialized datum using
 `new JSONDataInstance(datum)` with **default options**, then invokes
 `PyretDataInstance.prototype.reify.call(freshJsonInstance, rootId)`. This selects the
-same core class whose cache was cleared; the editor can load two core copies.
+same Spyret class whose cache was cleared, separate from Core.
 
 Only **after** that method has returned an expression does the decoder load
 `PRELUDE`, evaluate the expression and obtain its `torepr` string. An actual

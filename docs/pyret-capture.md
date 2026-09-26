@@ -49,8 +49,8 @@ Spyret supplies `prepareDiagram(value, runtime)` → `IDataInstance`; Core recei
 that instance. The adapter integration requires no Core API changes or unpublished entry points.
 Core 6.3.2 also fixes zoom-animation cleanup when a diagram is removed.
 
-`npm run test:relationalization` checks the legacy baseline audit and the new
-API. The new integration checks import all 86 enabled existing corpus examples
+`npm run test:relationalization` checks both Spyret’s legacy adapter and
+its portable capture API. The new integration checks import all 86 enabled existing corpus examples
 in a fresh headless realm, inspect dictionary sharing, check nested errors, and
 invoke the real display module with the browser REPL global removed.
 Both CI seeds also run the new capture path through 100 generated values and

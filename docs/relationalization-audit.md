@@ -1,8 +1,8 @@
 # Relationalization boundary: measured baseline and first implementation
 
 Status: historical stage-1 baseline, measured on 2026-09-25 before implementing
-the new capture API. The proposed work below has now been implemented in
-**Spytial-Core** and integrated in the IDE; see [the current integration](pyret-capture.md).
+the new capture API. The proposed work below was implemented in **Spyret** and
+integrated in the IDE; see [the current integration](pyret-capture.md).
 This audit is retained to explain the original losses and design decisions.
 
 ## Decision
@@ -11,7 +11,7 @@ Retain atoms, relations, and types as the authoritative value graph. The current
 encoding already preserves most of the structural facts in the first scope.
 Do not replace it with value skeletons or a parallel JSON object tree.
 
-Add a small Core capture boundary with explicit roots, an explicit runtime
+The original proposal called for a Core capture boundary with explicit roots, an explicit runtime
 adapter, and a versioned export envelope. Before calling that boundary faithful,
 fix nominal constructor identity and make unsupported-state losses explicit.
 Neither fix requires redesigning `_output`, YAML, view attachment, or the host.
