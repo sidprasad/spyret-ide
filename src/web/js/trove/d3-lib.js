@@ -3,12 +3,12 @@
     { 'import-type': 'builtin', 'name': 'image-lib' },
   ],
   nativeRequires: [
-    'pyret-base/js/js-numbers',
     'd3'
   ],
   provides: {},
-  theModule: function (RUNTIME, NAMESPACE, uri, IMAGELIB, jsnums, d3) {
+  theModule: function (RUNTIME, NAMESPACE, uri, IMAGELIB, d3) {
   'use strict';
+  var jsnums = RUNTIME.jsnums;
 
   var IMAGE = RUNTIME.getField(IMAGELIB, "internal");
 

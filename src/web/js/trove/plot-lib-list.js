@@ -3,7 +3,6 @@
     { 'import-type': 'builtin', 'name': 'd3-lib-list' },
   ],
   nativeRequires: [
-    'pyret-base/js/js-numbers',
     'd3',
     'd3-tip'
   ],
@@ -17,8 +16,9 @@
       'box-chart': "tany"
     }
   },
-  theModule: function (RUNTIME, NAMESPACE, uri, CLIB, jsnums, d3, D3TIP) {
+  theModule: function (RUNTIME, NAMESPACE, uri, CLIB, d3, D3TIP) {
   'use strict';
+  var jsnums = RUNTIME.jsnums;
   var gf = RUNTIME.getField,
       cases = RUNTIME.ffi.cases;
   var libNum =       CLIB.libNum,

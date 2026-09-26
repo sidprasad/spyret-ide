@@ -41,6 +41,12 @@ describe('static client-only IDE', function() {
   });
   it('runs the real compiler and Spytial without application endpoints', async function() {
     assert.strictEqual(await ide.page.evaluate(() => window.CLIENT_SIDE), true);
+    assert.strictEqual(await ide.page.evaluate(() => window.spytialcore.version), '6.3.2');
+    const servedSpyret = await ide.page.evaluate(async () => {
+      const script = document.querySelector('script[src$="/spytial-pyret-capture.js"]');
+      return (await fetch(script.src)).text();
+    });
+    assert.strictEqual(servedSpyret, fs.readFileSync(require.resolve('spyret/global'), 'utf8'));
     const initialized = await ide.page.evaluate(() => window.__reifyFidelity.init('x = 21'));
     assert.strictEqual(initialized.ok, true, JSON.stringify(initialized));
     const evaluated = await ide.page.evaluate(() => window.__reifyFidelity.inspectExpression('x * 2'));
@@ -81,6 +87,61 @@ describe('static client-only IDE', function() {
     await ide.page.waitForFunction(() => window.CPO && CPO.editor && !CPO.editor.cm.getOption('readOnly'));
     assert.strictEqual(await ide.page.evaluate(() => CPO.editor.cm.getValue()), '', 'An intentionally empty draft must stay empty');
   });
+
+  it('renders standard numeric and collection output after the backend switch', async function() {
+    await ide.page.waitForFunction(() => window.__internalRepl && !document.querySelector('#runButton').disabled);
+    await ide.page.evaluate(() => CPO.editor.cm.setValue('[list: 1/3, ~1.5, 12345678901234567890, {1; 2}, nothing]'));
+    await ide.page.click('#runButton');
+    await ide.page.waitForFunction(() => document.querySelector('#output').textContent.includes('12345678901234567890'));
+    // Rationals initially show a repeating decimal; clicking exposes the exact fraction.
+    await ide.page.click('#output .rationalNumber');
+    const output = await ide.page.$eval('#output', el => el.textContent);
+    assert.match(output, /1\/3/);
+    assert.match(output, /~1\.5/);
+    assert.match(output, /nothing/);
+    assert.ok(!output.includes('error displaying'), output);
+  });
+
+  for (const customOutput of [false, true]) {
+    it(`renders a Spytial diagram on standard Pyret ${customOutput ? 'through _output' : 'through SP.diagram'}`, async function() {
+      await ide.page.waitForFunction(() => window.__internalRepl && !document.querySelector('#runButton').disabled);
+      assert.strictEqual(await ide.page.evaluate(() => typeof window.__internalRepl.runtime.ffi.isVSConstrRender), 'undefined',
+        'This test must run against the upstream backend without the fork renderer');
+      await ide.page.evaluate(() => {
+        // Rendering must use Spyret even if Core drops its legacy Pyret adapter.
+        window.spytialcore = Object.assign({}, window.spytialcore, {
+          PyretDataInstance: function () { throw new Error('IDE must use the Spyret package for Pyret adaptation'); }
+        });
+      });
+      const source = 'import spytial as SP\nimport valueskeleton as VS\n' + (customOutput
+        ? 'data Box: box(n) with:\n method _output(self): VS.vs-value(SP.diagram(self, "")) end\nend\nbox(42)'
+        : 'data Box: box(n) end\nSP.diagram(box(42), "")');
+      await ide.page.evaluate(code => CPO.editor.cm.setValue(code), source);
+      await ide.page.click('#runButton');
+      try {
+        await ide.page.waitForFunction(() => {
+          const graph = document.querySelector('#output webcola-cnd-graph');
+          return graph && graph.shadowRoot && graph.shadowRoot.querySelectorAll('g.node').length > 0;
+        }, {timeout: 30000});
+      } catch (error) {
+        throw new Error(error.message + '\n' + await ide.page.$eval('#output', el => el.textContent));
+      }
+      const result = await ide.page.evaluate(() => {
+        const graph = document.querySelector('#output webcola-cnd-graph');
+        const container = graph.parentElement.parentElement;
+        const imported = window.Spyret.importPyretCapture(container.spytialCapture);
+        return { value: imported.values.get('value').dict.n, source: container.querySelector('pre').textContent,
+          typeId: imported.values.get('value').$name,
+          typeLabels: Array.from(graph.shadowRoot.querySelectorAll('.mostSpecificTypeLabel'), el => el.textContent) };
+      });
+      assert.strictEqual(result.value, 42);
+      assert.strictEqual(result.source, 'box(42)');
+      assert.match(result.typeId, /^pyret:constructor:/, 'The portable snapshot retains nominal identity');
+      assert.ok(result.typeLabels.includes('box'), JSON.stringify(result.typeLabels));
+      assert.ok(!result.typeLabels.some(label => label.includes('pyret:constructor:')));
+      assert.deepStrictEqual(errors, []);
+    });
+  }
   it('imports a local file as a separate recoverable draft', async function() {
     const filename = path.resolve(__dirname, '../../build/local-import-test.arr');
     fs.writeFileSync(filename, 'use context starter2024\nlocal-answer = 42\n');

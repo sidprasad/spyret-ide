@@ -1,5 +1,11 @@
 # Working Spyret → Spytial → Spyret round trip
 
+Current integration: the IDE's production diagrams use npm `spyret@0.1.1`
+and released Core `6.3.2`. This suite still measures Core's retained legacy
+Pyret APIs as a regression baseline; the production Spyret path is covered by
+`test/relationalization/capture.test.js` and the client display tests. Results
+below explicitly labeled 6.0.1 are historical measurements.
+
 This experiment tests the **working relationalizer and reifier** against the
 particular Pyret runtime loaded by Spyret's editor. It does not introduce a
 replacement relationalizer, a new relational encoding, or a direct string
@@ -21,8 +27,8 @@ Pyret check: B is A
 
 The producer evaluates the input expression once. Its reference string uses
 the runtime's `_torepr` printer, the implementation behind `torepr`. It then
-calls `new PyretDataInstance(value, {}, window.__internalRepl)`, exactly as
-`src/web/js/trove/dom-render.js` does. There is no primitive-root wrapper or
+calls `new PyretDataInstance(value, {}, window.__internalRepl)`, retaining the
+released Core 6.0.1 baseline. There is no primitive-root wrapper or
 test-specific structural conversion. The tests exercise these core calls in
 the editor runtime, not the graphical layout/rendering UI.
 

@@ -22,7 +22,7 @@ NODE_MODULE = $(shell node -e "console.log(require('node:path').dirname(require.
 # other paths in them
 CM=$(call NODE_MODULE,codemirror)/..
 PYRET_MODE=$(call NODE_MODULE,pyret-codemirror-mode)/..
-PYRET=$(call NODE_MODULE,pyret-lang)/../..
+PYRET=vendor/pyret-upstream/lang
 
 CPOMAIN=build/web/js/cpo-main.jarr
 CPOGZ=build/web/js/cpo-main.jarr.gz.js
@@ -132,6 +132,12 @@ COPY_JS := $(patsubst src/web/js/%.js,build/web/js/%.js,$(wildcard src/web/js/*.
 
 build/web/js/%.js: src/web/js/%.js
 	cp $< $@
+
+.PHONY: sync-spyret
+sync-spyret:
+	node src/scripts/update-pyret-capture.js
+
+lib/js/spytial-pyret-capture.js: sync-spyret
 
 COPY_LIB_JS := $(patsubst lib/js/%.js,build/web/js/%.js,$(wildcard lib/js/*.js))
 
@@ -369,7 +375,7 @@ web-local: $(WEB) $(WEBV) $(WEBJS) $(WEBJSGOOG) $(WEBCSS) $(WEBTHEMES) $(WEBFONT
 web: $(WEB) $(WEBV) $(WEBJS) $(WEBJSGOOG) $(WEBCSS) $(WEBTHEMES) $(WEBFONTS) $(WEBIMG) $(WEBIMAGES) $(WEBARR) $(OUT_HTML) $(COPY_HTML) $(OUT_CSS) $(COPY_CSS) $(COPY_LIB_CSS) $(COPY_THEMES) $(COPY_FONTS) $(COPY_JS) $(COPY_LIB_JS) $(COPY_LIB_IMAGES) $(COPY_ARR) $(COPY_GIF) $(COPY_SVG) $(COPY_PNG) $(MISC_JS) $(MISC_CSS) $(MISC_IMG) $(COPY_NEW_CSS) $(COPY_NEW_JS) $(COPY_GOOGLE_JS) build/web/js/editor-misc.min.js build/web/js/snap build/web/js/transpile.xml build/web/editor.html build/web/editor.embed.html
 
 link-pyret:
-	ln -s $(PYRET) pyret
+	node src/scripts/prepare-pyret.js
 	(cd $(PYRET) && $(MAKE) phaseA-deps)
 
 deploy-cpo-main: link-pyret $(CPOMAIN) $(CPOGZ)
@@ -381,6 +387,7 @@ $(PHASEA): libpyret ;
 
 .PHONY: libpyret
 libpyret:
+	node src/scripts/prepare-pyret.js
 	$(MAKE) phaseA -C pyret/
 
 $(BUNDLED_DEPS): src/scripts/npm-dependencies.js

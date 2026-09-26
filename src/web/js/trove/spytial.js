@@ -1,12 +1,13 @@
 ({
     requires: [],
-    nativeRequires: [],
+    nativeRequires: ["cpo/spytial-view"],
     provides: {
         values: {
-            genlayout: ["arrow", [["RawArray", "Any"], "String"], "Any"],
+            genlayout: ["arrow", ["Any", "String"], "Any"],
+            diagram: ["arrow", ["Any", "String"], "Any"],
         }
     },
-    theModule: function (runtime, namespace, uri) {
+    theModule: function (runtime, namespace, uri, views) {
 
 
         function getSpytialCore() {
@@ -42,15 +43,15 @@
             try {
                 const core = getSpytialCore();
 
-                // Spytial core layout logic
-                const dataInstance = new core.PyretDataInstance(v, {}, window.__internalRepl);
-                const evaluationContext = { sourceData: dataInstance };
+                // Spyret owns Pyret adaptation; Core receives only IDataInstance.
+                const spyret = window.Spyret;
+                if (!spyret) throw new Error("The Spyret package is unavailable.");
+                const prepared = spyret.prepareDiagram(v, runtime);
+                const dataInstance = prepared.instance;
+                container.spytialCapture = prepared.snapshot;
                 const evaluator = new core.Evaluators.SGraphQueryEvaluator();
-                evaluator.initialize(evaluationContext);
-                // The input is visited before its children. Keep the selected
-                // root outside IDataInstance, including for fully cyclic data.
-                const rootId = dataInstance.getAtoms()[0].id;
-                const r = dataInstance.reify(rootId);
+                evaluator.initialize({ sourceData: dataInstance });
+                const r = prepared.sourcePreview;
                 const layoutSpec = parseLayoutSpecSafe(core, cndSpec);
                 const ENABLE_ALIGNMENT_EDGES = true;
                 const instanceNumber = 0;
@@ -62,6 +63,7 @@
                 );
                 const layoutResult = layoutInstance.generateLayout(dataInstance);
                 const currentInstanceLayout = layoutResult.layout;
+                const displayLayout = spyret.diagramTypeNames(currentInstanceLayout);
 
                 // String view
                 const stringView = document.createElement("pre");
@@ -105,7 +107,7 @@
                 container.appendChild(graphContainer);
 
                 // Render the graph layout
-                graphElement.renderLayout(currentInstanceLayout).then(() => {
+                graphElement.renderLayout(displayLayout).then(() => {
                     console.log("Graph layout rendered");
 
                     // Mount additional React components after rendering
@@ -140,7 +142,11 @@
 
 
         return runtime.makeModuleReturn({
-            genlayout: runtime.makeFunction(genlayout)
+            genlayout: runtime.makeFunction(genlayout),
+            diagram: runtime.makeFunction(function (value, spec) {
+                runtime.checkString(spec);
+                return runtime.makeOpaque(views.make(genlayout(value, spec)));
+            })
         }, {});
     }
 })

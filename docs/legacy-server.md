@@ -27,10 +27,9 @@ PYRET="http://localhost:4999/js/cpo-main.jarr"
 Then you can run
 
 ```
-$ npm run local-install
-$ ln -s node_modules/pyret-lang pyret
-$ git submodule init
-$ git submodule update
+$ git submodule update --init --recursive
+$ npm ci --ignore-scripts
+$ node src/scripts/prepare-pyret.js
 $ npm run build:server
 ```
 
@@ -55,14 +54,11 @@ and then refresh the page.
 
 ## Running with Development Pyret
 
-If you'd like to run with a development copy of Pyret, you can simply symlink
-`pyret` elsewhere.  For example, if your development environment has
-`code.pyret.org` and `pyret-lang` both checked out in the same directory, you
-could just run this from the CPO directory:
-
-```
-$ ln -s ../pyret-lang pyret
-```
+The backend checkout is `vendor/pyret-upstream`, pinned to the standard upstream
+repository. To test another upstream revision, check it out inside that
+submodule and rebuild. The build prepares its `lang/` dependencies and invalidates
+the IDE's compiled-module cache when the revision changes. Commit the submodule
+revision when changing the supported backend.
 
 ## Configuration with Google Auth and Storage
 
@@ -173,7 +169,7 @@ Spyret's actual Pyret runtime, see
 the datum without a producer cache, evaluates the reified expression in fresh
 Pyret interactions, and compares `torepr` strings with an actual Pyret check.
 There is no replacement relationalizer. The editor and PR CI use the released
-spytial-core **6.0.1** CDN bundles. Both the fixed regression suite and the
+spytial-core **6.3.2** CDN bundles. Both the fixed regression suite and the
 strict measurement require exact matches for every planned constructor-data
 fixture; any mismatch or incomplete run fails. The documented 4.4.3 failures
 are historical measurements, not accepted failures in the current suite.

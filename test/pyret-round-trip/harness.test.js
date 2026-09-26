@@ -90,7 +90,7 @@ describe('Shared datum-only harness contract', function () {
 function browserFixture(value) {
   const calls = [], cache = new Map([['poison', true]]);
   const rt = { isSuccessResult: () => true, getField: (v, field) => v[field],
-    toReprJS: () => 'reference-print', ReprMethods: { _torepr: '_torepr' } };
+    toReprJS: () => { calls.push({ kind: 'print' }); return 'reference-print'; }, ReprMethods: { _torepr: '_torepr' } };
   const repl = { runtime: rt, run: async expr => {
     calls.push({ kind: 'run', expr });
     return { result: { dict: { v: { val: { runtime: rt, result: { result: { answer: value } } } } },
@@ -123,6 +123,16 @@ function browserFixture(value) {
 }
 
 describe('Shared browser boundary contract', function () {
+  it('captures a live value without passing an evaluator or invoking its printer', async function () {
+    const value = { dict: { hidden: 17 } };
+    const f = browserFixture(value);
+    const row = await f.api.captureWorkingCase('SOURCE');
+    assert.strictEqual(row.verdict, 'captured');
+    assert.strictEqual(row.rootId, 'a');
+    assert.deepStrictEqual(f.calls.find(c => c.kind === 'relationalize').args, [value]);
+    assert.ok(!f.calls.some(c => c.kind === 'print'));
+    assert.strictEqual(f.cache.size, 0);
+  });
   for (const value of [0, false, '', { dict: { field: 1 } }]) {
     it(`passes ${JSON.stringify(value)} directly to the production relationalizer`, async function () {
       const f = browserFixture(value);

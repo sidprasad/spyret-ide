@@ -1,0 +1,27 @@
+name: Verify published Spyret bundle
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - name: Install published dependencies
+        run: |
+          git config --global url.https://github.com/.insteadOf ssh://git@github.com/
+          npm ci --ignore-scripts
+      - name: Verify the browser asset comes from the locked npm package
+        run: |
+          npm run update:spyret
+          git diff --exit-code -- lib/js/spytial-pyret-capture.js lib/js/spytial-pyret-capture.json lib/js/spytial-pyret-capture.LICENSE.txt
+          npx --no-install mocha test/relationalization/bundle.test.js

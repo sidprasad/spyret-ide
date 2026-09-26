@@ -8,6 +8,7 @@
     "builtin://image"
   ],
   "raw-js": {
+    "cpo/spytial-view": "src/web/js/spytial-view.js",
     "pyret-base/js/codePoint": "pyret/build/phaseA/js/codePoint.js",
     "pyret-base/js/exn-stack-parser": "pyret/build/phaseA/js/exn-stack-parser.js",
     "pyret-base/js/js-numbers": "pyret/build/phaseA/js/js-numbers.js",

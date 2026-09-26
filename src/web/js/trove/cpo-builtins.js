@@ -24,7 +24,7 @@
     { "import-type": "builtin", "name": "essentials2024" },
     { "import-type": "builtin", "name": "starter2024" },
     { "import-type": "builtin", "name": "dcic2024" },
-    { "import-type": "builtin", "name": "dom-render" }
+    { "import-type": "builtin", "name": "spytial" }
   ],
   provides: {},
   nativeRequires: [],

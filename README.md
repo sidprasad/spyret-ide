@@ -4,15 +4,35 @@ The default build runs the Pyret compiler, REPL, Spytial visualization, and Goog
 
 ## Build and run
 
-Use Node.js 20 or later, npm, and Make:
+Use Node.js 22.12 or later, npm, and Make:
 
 ```sh
+git submodule update --init --recursive
 npm ci --ignore-scripts
 npm run build
 npm start
 ```
 
-Open http://localhost:4999/editor/. `npm start` is a local file server, with no application API routes. The build creates the `pyret` symlink if needed and builds the compiler bundle. A fresh build can take several minutes. `npm run build:static` is an alias for `npm run build`.
+Open http://localhost:4999/editor/. `npm start` is a local file server, with no application API routes. The backend is the unmodified standard `brownplt/pyret-lang` repository, pinned from its `drydock` branch in `vendor/pyret-upstream`. The build installs its locked dependencies, points `pyret` at its `lang/` directory, and builds the compiler bundle. A fresh build can take several minutes. `npm run build:static` is an alias for `npm run build`.
+
+## Spytial diagrams
+
+Use the IDE's display module with ordinary Pyret values:
+
+```pyret
+import spytial as SP
+data Tree: leaf | node(value, left, right) end
+SP.diagram(node(1, leaf, leaf), "")
+```
+
+`SP.diagram(value, yaml-spec)` produces an interactive diagram in the output pane.
+For a datatype's custom `_output`, return `VS.vs-value(SP.diagram(self, spec))`
+using the standard `valueskeleton` module. This replaces the fork-only
+`vs-constr-render` API. The YAML spec editor still edits the same string literals.
+Pyret adaptation comes from published `spyret@0.1.1`; queries, layout and
+rendering use published `spytial-core@6.3.2`. The build copies the locked Spyret
+npm browser entry automatically. No local Core patch or source checkout is required.
+See [capture and display integration](docs/pyret-capture.md).
 
 The editor works without Google configuration. File → Open local file imports a program, edits are saved on this device as local drafts, and File → Download exports it. Drafts belong to the browser and origin; clearing site data removes them. A storage failure is shown explicitly. Reloading an unsaved draft restores it; File → New opens a separate draft.
 

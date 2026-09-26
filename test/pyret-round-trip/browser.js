@@ -5,7 +5,7 @@
  *
  * The IDE page exposes two things the harness needs: `window.__internalRepl`
  * (the REPL evaluator, installed by cpo-main.js) and `window.spytialcore`
- * (the pinned spytial-core bundle that dom-render.js diagrams with). Each case
+ * (the pinned spytial-core bundle that spytial.js diagrams with). Each case
  * uses separate producer and decoder pages:
  *
  *   1. evaluate the case once and inspect the live value -> A
@@ -208,6 +208,10 @@ function pageRuntime() {
   }
 
   let counter = 0;
+  // Audit witnesses only. These identities are never part of the datum sent to
+  // the consumer, and never influence capture or reconstruction.
+  const observedConstructors = new WeakMap();
+  let nextConstructor = 0;
   async function run(code) {
     counter += 1;
     return unwrap(await repl.run(code, 'interactions://reify-fidelity-' + counter));
@@ -238,6 +242,44 @@ function pageRuntime() {
       }
       return version;
     },
+    // Audit-only path: evaluation obtains the fixture, then capture receives
+    // only the live value. No evaluator, printer, skeleton, or DOM is supplied.
+    // Keep this separate from exportWorkingCase, which measures torepr fidelity.
+    async captureWorkingCase(expr) {
+      const a = await run(expr);
+      if (!a.ok) return { verdict: 'value-error', error: a.error };
+      try {
+        PDI.clearGlobalConstructorCache();
+        const instance = new PDI(a.answer);
+        const datum = datumOf(instance);
+        // A measured legacy convention, NOT a proposed public root API.
+        const rootId = instance.getAtoms()[0].id;
+        const ctor = a.answer && a.answer.$constructor;
+        let inputObservation;
+        if (ctor && (typeof ctor === 'object' || typeof ctor === 'function')) {
+          if (!observedConstructors.has(ctor)) observedConstructors.set(ctor, ++nextConstructor);
+          inputObservation = { constructorIdentity: observedConstructors.get(ctor),
+            name: a.answer.$name, arity: a.answer.$arity, brands: Object.keys(a.answer.brands || {}) };
+        }
+        return { verdict: 'captured', datum, rootId, inputObservation };
+      } catch (e) {
+        return { verdict: 'relationalize-error', error: String(e) };
+      } finally {
+        PDI.clearGlobalConstructorCache();
+      }
+    },
+    async capturePortableCase(expr) {
+      const a = await run(expr);
+      if (!a.ok) return { verdict: 'value-error', error: a.error };
+      try {
+        const api = window.Spyret;
+        const snapshot = api.capturePyret([{ name: 'value', value: a.answer, observation: { expression: expr } }],
+          api.createPyretRuntimeAdapter(a.rt));
+        return { verdict: 'captured', snapshot };
+      } catch (error) {
+        return { verdict: 'capture-error', error: String(error), root: error.root, path: error.path, reason: error.reason };
+      }
+    },
     async exportWorkingCase(expr) {
       const a = await run(expr);
       if (!a.ok) return { verdict: 'value-error', error: a.error };
@@ -250,7 +292,7 @@ function pageRuntime() {
       }
       try {
         PDI.clearGlobalConstructorCache();
-        // Exactly the constructor invocation in trove/dom-render.js. No
+        // Retain the released Core 6.0.1 baseline invocation. No
         // primitive-root adapter, synthetic wrapper or replacement encoding.
         const instance = new PDI(a.answer, {}, window.__internalRepl);
         row.datum = datumOf(instance);
@@ -285,7 +327,7 @@ function pageRuntime() {
       return { verdict: 'inspected', B: b.answer };
     },
     async renderExpression(expr) {
-      const r = await run('DR.genlayout(' + expr + ', "")');
+      const r = await run('SP.genlayout(' + expr + ', "")');
       if (!r.ok) return { verdict: 'render-eval-error', error: r.error };
       const container = r.answer;
       if (!container || !container.querySelector) return { verdict: 'render-error', error: 'No diagram container' };
@@ -303,7 +345,7 @@ function pageRuntime() {
         }
         const source = container.querySelector('pre');
         return { verdict: nodes && source ? 'rendered' : 'render-error', nodes,
-          R: source && source.textContent };
+          R: source && source.textContent, snapshot: container.spytialCapture };
       } finally { container.remove(); }
     },
     async checkStrings(expected, actual) {

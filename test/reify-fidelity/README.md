@@ -1,5 +1,11 @@
 # Pyret inspection fidelity
 
+Current integration: the IDE's production diagrams use npm `spyret@0.1.1`
+and released Core `6.3.2`. This suite still measures Core's retained legacy
+Pyret APIs as a regression baseline; the production Spyret path is covered by
+`test/relationalization/capture.test.js` and the client display tests. Results
+below explicitly labeled 6.0.1 are historical measurements.
+
 This suite asks whether the working Pyret relationalizer preserves enough
 information to reproduce `torepr(v)` for a declared corpus. It uses the same
 [`../pyret-round-trip/harness.js`](../pyret-round-trip/harness.js) as the strict
@@ -65,7 +71,7 @@ The two suites now differ in their **corpora**, not their transport or decoder:
 `constructor-data` samples the narrowly specified constructor domain, while
 this suite includes built-in collections, custom printing, and pending forms.
 The main round trips do not test graphical output. A separate smoke test invokes
-Spyret’s actual `dom-render` module on a cycle and checks that it displays both
+Spyret’s actual `spytial` module on a cycle and checks that it displays both
 reconstructed source and graph nodes.
 
 ## Running
